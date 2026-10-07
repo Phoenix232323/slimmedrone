@@ -1,7 +1,7 @@
-# Basis: nodig op de laptop en op de Raspberry Pi
+# Laptop/pc. Op de Raspberry Pi gebruik je requirements-pi.txt.
 flask>=3.0
 opencv-python>=4.10
-numpy>=1.26
+numpy
 python-dotenv>=1.0
 anthropic>=1.11
 

@@ -122,7 +122,7 @@ python3 -m venv --system-site-packages .venv && source .venv/bin/activate
 ```
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-pi.txt
 ```
 
 ```bash
@@ -131,7 +131,12 @@ cp .env.example .env
 
 Zet in `.env`: `CAMERA_SOURCE=picamera`. Is de Pi te traag, zet dan ook
 `PROCESS_WIDTH=640` en `OBJECT_EVERY=3`, of gebruik optie B (`pi_stream.py`).
-(`--system-site-packages` is nodig zodat de venv `picamera2` van het systeem kan gebruiken.)
+
+Let op: gebruik op de Pi `requirements-pi.txt`, niet `requirements.txt`. De venv
+gebruikt `picamera2` en `numpy` van het systeem (daarom `--system-site-packages`), en
+nieuwere OpenCV-versies zouden die numpy vervangen, waarna de camera niet meer werkt.
+
+Werkt de camera niet? Test hem eerst los met `rpicam-hello --list-cameras`.
 
 ## Gezichten toevoegen
 

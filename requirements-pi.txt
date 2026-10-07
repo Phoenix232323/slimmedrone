@@ -1,0 +1,11 @@
+# Raspberry Pi: installeer met  pip install -r requirements-pi.txt
+#
+# De venv moet gemaakt zijn met --system-site-packages, zodat picamera2 en
+# numpy van het systeem (apt) gebruikt worden. OpenCV 4.12 en nieuwer eisen
+# numpy 2, wat niet samengaat met picamera2 op Raspberry Pi OS Bookworm.
+# OpenCV 4.10/4.11 werkt met numpy 1 én 2. "headless" = zonder venster-
+# bibliotheken, die we op de Pi niet nodig hebben.
+flask>=3.0
+opencv-python-headless>=4.10,<4.12
+python-dotenv>=1.0
+anthropic>=1.11
