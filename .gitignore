@@ -1,0 +1,14 @@
+# Geheimen en persoonlijke gegevens (wachtwoorden, gezichten, meldingen)
+.env
+data/
+
+# Modellen worden automatisch gedownload
+*.onnx
+*.pt
+*_ncnn_model/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/

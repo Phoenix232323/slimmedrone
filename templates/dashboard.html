@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Live - SlimmeDrone{% endblock %}
+{% block body %}
+{% include "_header.html" %}
+<main class="dash">
+  <section class="dash-main">
+    <div class="card video-card">
+      <div class="video-wrap" id="videoWrap">
+        <img id="video" src="/video_feed" alt="Live camerabeeld van de drone">
+        <span class="video-hint">Klik in het beeld om in te zoomen</span>
+      </div>
+      <div class="video-bar">
+        <span class="zoom-state" id="zoomState">Volledig beeld</span>
+        <div class="video-tools">
+          <button class="btn small" id="zoomOut" disabled>Zoom uit</button>
+          <a class="btn small" href="/api/snapshot">Foto opslaan</a>
+          <button class="btn small" id="fullscreen">Volledig scherm</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-grid">
+      <div class="card">
+        <h2>Gedetecteerd <span class="count" id="objectCount">0</span></h2>
+        <ul class="chips" id="objects"></ul>
+        <p class="empty" id="objectsEmpty">Nog niets in beeld.</p>
+        <p class="hint" id="detectorInfo"></p>
+      </div>
+      <div class="card">
+        <h2>Gezichten <span class="count" id="faceCount">0</span></h2>
+        <ul class="face-list" id="faces"></ul>
+        <p class="empty" id="facesEmpty">Geen gezichten in beeld.</p>
+      </div>
+      <div class="card alerts-card">
+        <h2>Meldingen</h2>
+        <ul class="alerts" id="alerts"></ul>
+        <p class="empty" id="alertsEmpty">Nog geen meldingen.</p>
+      </div>
+    </div>
+  </section>
+
+  <aside class="card chat">
+    <div class="chat-head">
+      <div class="orb" aria-hidden="true"></div>
+      <div class="chat-title">
+        <h2>J.A.R.V.I.S.</h2>
+        <small id="aiMode">{{ 'Claude kijkt mee' if ai_mode == 'claude' else 'Lokale modus (zonder Claude)' }}</small>
+      </div>
+      <button class="icon-btn" id="speakToggle" title="Antwoorden voorlezen" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path class="wave" d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+      </button>
+      <button class="icon-btn" id="chatReset" title="Nieuw gesprek">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+      </button>
+    </div>
+
+    <div class="messages" id="messages" aria-live="polite">
+      <div class="msg jarvis">
+        <p>Goedendag. Ik kijk mee via de dronecamera. Vraag me wat ik zie, of laat me ergens op inzoomen.</p>
+      </div>
+    </div>
+
+    <div class="suggestions" id="suggestions">
+      <button>Wat zie je?</button>
+      <button>Wie is er in beeld?</button>
+      <button>Zoom in op de persoon</button>
+      <button>Zoom uit</button>
+    </div>
+
+    <form class="chat-input" id="chatForm" autocomplete="off">
+      <button type="button" class="icon-btn" id="micBtn" title="Inspreken" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      </button>
+      <input id="chatInput" placeholder="Vraag iets, bijv. 'zoom in op de tafel'" maxlength="1000">
+      <button class="btn primary" id="sendBtn">Stuur</button>
+    </form>
+  </aside>
+</main>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+<script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+{% endblock %}

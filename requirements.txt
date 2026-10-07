@@ -1,0 +1,10 @@
+# Basis: nodig op de laptop en op de Raspberry Pi
+flask>=3.0
+opencv-python>=4.10
+numpy>=1.26
+python-dotenv>=1.0
+anthropic>=1.11
+
+# Optioneel: YOLO11 voor nog betere objectherkenning (installeert PyTorch, ~1 GB):
+#     pip install ultralytics
+# Zonder ultralytics gebruikt de software YOLOX via OpenCV (werkt ook prima).

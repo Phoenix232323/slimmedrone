@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Gezichten - SlimmeDrone{% endblock %}
+{% block body %}
+{% include "_header.html" %}
+<main class="faces-page">
+  <section class="card">
+    <h2>Gezicht toevoegen</h2>
+    <p class="hint">Voeg alleen gezichten toe van mensen die daar toestemming voor geven.
+      Meer foto's per persoon (verschillende hoeken en licht) maken de herkenning beter.</p>
+
+    <label class="field">Naam
+      <input id="faceName" placeholder="Bijv. Johan" maxlength="40">
+    </label>
+
+    <div class="add-options">
+      <div class="add-option">
+        <h3>Vanaf de live camera</h3>
+        <div class="mini-video"><img src="/video_feed" alt="Live camerabeeld"></div>
+        <button class="btn primary wide" id="captureBtn">Neem foto van het gezicht in beeld</button>
+      </div>
+      <div class="add-option">
+        <h3>Foto's uploaden</h3>
+        <label class="dropzone" id="dropzone">
+          <input type="file" id="photoInput" accept="image/*" multiple>
+          <span><b>Kies foto's</b> of sleep ze hierheen</span>
+          <small id="photoCount">JPG of PNG, één persoon per foto</small>
+        </label>
+        <button class="btn primary wide" id="uploadBtn">Uploaden</button>
+      </div>
+    </div>
+    <div class="result" id="result" hidden></div>
+  </section>
+
+  <section class="card">
+    <h2>Bekende personen <span class="count" id="peopleCount">0</span></h2>
+    <ul class="people" id="people"></ul>
+    <p class="empty" id="peopleEmpty">Nog niemand toegevoegd.</p>
+  </section>
+</main>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+<script src="{{ url_for('static', filename='gezichten.js') }}"></script>
+{% endblock %}

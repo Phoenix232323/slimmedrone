@@ -1,0 +1,21 @@
+<header class="topbar">
+  <a class="brand" href="/">
+    {% include "_logo.html" %}
+    <span>SlimmeDrone <small>grondstation</small></span>
+  </a>
+  <nav class="tabs">
+    <a href="/" class="{{ 'active' if page == 'live' }}">Live</a>
+    <a href="/gezichten" class="{{ 'active' if page == 'gezichten' }}">Gezichten</a>
+  </nav>
+  {% if page == 'live' %}
+  <div class="pills">
+    <span class="pill" id="pillCamera"><i></i><b>Camera</b></span>
+    <span class="pill" id="pillFps"><b>0 fps</b></span>
+    <span class="pill" id="pillAi"><b>AI</b></span>
+  </div>
+  {% endif %}
+  <div class="account">
+    <span class="user-name">{{ user }}</span>
+    <form method="post" action="/logout"><button class="btn small ghost">Uitloggen</button></form>
+  </div>
+</header>
