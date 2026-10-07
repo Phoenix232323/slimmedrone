@@ -1,0 +1,2 @@
+# Shell-scripts moeten Linux-regeleindes houden, anders werken ze niet op de Pi
+*.sh text eol=lf

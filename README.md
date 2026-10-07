@@ -107,36 +107,40 @@ Op macOS/Linux gebruik je `source .venv/bin/activate` en `cp .env.example .env`.
 
 ## Installeren op de Raspberry Pi
 
-Gebruik Raspberry Pi OS (Bookworm, 64-bit) op een Pi 4 of 5 met de Camera Module.
+Gebruik Raspberry Pi OS (64-bit) op een Pi 4 of 5 met een cameramodule.
+(Pi 5 en Pi Zero hebben een kleinere camera-aansluiting: gebruik de *Standard-Mini* kabel.)
+
+1. Haal de code op de Pi: open in de browser van de Pi deze GitHub-pagina, klik op de
+   groene knop **Code** en dan **Download ZIP**, en pak het zip-bestand uit
+   (rechtermuisklik, *Extract Here*). Of in de terminal:
 
 ```bash
-sudo apt update && sudo apt install -y python3-picamera2 git
+git clone https://github.com/Phoenix232323/slimmedrone.git
 ```
+
+2. Open een terminal in die map (in Bestandsbeheer: **F4**, of via *Tools* >
+   *Open Current Folder in Terminal*) en installeer alles in één keer:
 
 ```bash
-git clone https://github.com/Phoenix232323/slimmedrone.git && cd slimmedrone
+bash install-pi.sh
 ```
+
+   Het script installeert de pakketten, zet de camera op `picamera`, downloadt de
+   AI-modellen en vraagt je om een gebruikersnaam en wachtwoord voor de website.
+
+3. Starten (ook de volgende keren):
 
 ```bash
-python3 -m venv --system-site-packages .venv && source .venv/bin/activate
+bash start.sh
 ```
 
-```bash
-pip install -r requirements-pi.txt
-```
-
-```bash
-cp .env.example .env
-```
-
-Zet in `.env`: `CAMERA_SOURCE=picamera`. Is de Pi te traag, zet dan ook
-`PROCESS_WIDTH=640` en `OBJECT_EVERY=3`, of gebruik optie B (`pi_stream.py`).
-
-Let op: gebruik op de Pi `requirements-pi.txt`, niet `requirements.txt`. De venv
-gebruikt `picamera2` en `numpy` van het systeem (daarom `--system-site-packages`), en
-nieuwere OpenCV-versies zouden die numpy vervangen, waarna de camera niet meer werkt.
+Is de Pi te traag, gebruik dan optie B (`pi_stream.py`).
 
 Werkt de camera niet? Test hem eerst los met `rpicam-hello --list-cameras`.
+
+Handmatig installeren kan ook: maak de venv met `--system-site-packages` en gebruik
+`requirements-pi.txt` (niet `requirements.txt`). Nieuwere OpenCV-versies vervangen
+anders de numpy van het systeem, en dan werkt `picamera2` niet meer.
 
 ## Gezichten toevoegen
 
@@ -199,6 +203,8 @@ Zie `.env.example` voor alle opties.
 app.py               start het grondstation (website + AI)
 beheer.py            gebruikers en gezichten beheren vanaf de terminal
 pi_stream.py         alleen camerabeeld doorsturen vanaf de Pi (optie B)
+install-pi.sh        alles installeren op de Raspberry Pi
+start.sh             de SlimmeDrone starten op de Raspberry Pi
 slimmedrone/
   camera.py          camerabronnen (webcam, Pi-camera, stream, testbestand)
   objects.py         objectherkenning (YOLO11 / YOLOX)
