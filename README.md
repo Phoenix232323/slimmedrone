@@ -187,7 +187,7 @@ Namen haalt hij alleen uit jullie eigen gezichtsherkenning; hij herkent zelf nie
 | `CAMERA_SOURCE` | `0` | `0` = webcam, `picamera`, een stream-URL, of een video/foto om te testen |
 | `PROCESS_WIDTH` | `960` | beeldbreedte voor de AI (kleiner = sneller) |
 | `OBJECT_BACKEND` | `auto` | `yolo`, `opencv` of `uit` |
-| `OBJECT_EVERY` | `1` | alleen elk N-de beeld objecten zoeken |
+| `OBJECT_EVERY` | `1` | na elke objectherkenning eerst N nieuwe beelden afwachten (hoger = meer rekenkracht over) |
 | `FACE_MATCH_THRESHOLD` | `0.363` | hoger = strenger herkennen |
 | `ALERT_COOLDOWN` | `30` | seconden tussen meldingen over dezelfde persoon |
 | `PORT` | `5000` | poort van de website |
@@ -239,6 +239,9 @@ data/                gebruikers, gezichten, modellen, meldingen (staat NIET op G
 - **"Geen camerabeeld"**: controleer `CAMERA_SOURCE`. Probeer `0` of `1` voor een webcam.
   Sluit andere programma's die de camera gebruiken (Teams, Zoom).
 - **Traag**: verlaag `PROCESS_WIDTH` (bijv. 640) en verhoog `OBJECT_EVERY` (bijv. 3).
+  Kijk op een Raspberry Pi liever vanaf een laptop of telefoon mee: de browser op de Pi zelf
+  kost ook rekenkracht. De objectkaders lopen soms iets achter op het beeld; dat is normaal,
+  de objectherkenning draait apart zodat de livestream er niet op hoeft te wachten.
 - **Gezicht wordt niet herkend**: voeg meer foto's toe, of verlaag `FACE_MATCH_THRESHOLD` iets (bijv. 0.33).
 - **Andere apparaten kunnen de website niet openen**: sta Python toe in de Windows-firewall
   en controleer of alles op hetzelfde wifi-netwerk zit.

@@ -1,11 +1,15 @@
 """De verwerkingslus: camera -> AI -> tekenen -> zoom -> JPEG voor de website.
 
     camera.read()                      nieuwste camerabeeld
-      -> objects.detect()              wat is er te zien? (YOLO)
       -> faces.recognize()             wie is er te zien?
       -> alerts.process_faces()        meldingen maken
       -> zoom.update() + tekenen       uitsnede + kaders en namen
       -> JPEG                          naar iedereen die de livestream bekijkt
+
+Objectherkenning (YOLO) is veel trager dan de rest: op een Raspberry Pi kost
+één beeld al snel een halve seconde. Daarom draait die in een eigen thread op
+het nieuwste beeld, en tekent de lus hierboven steeds de laatste uitkomst.
+Zo blijft de livestream vloeiend; de objectkaders lopen soms iets achter.
 """
 import logging
 import threading
@@ -50,10 +54,17 @@ class Pipeline:
         self._jpeg_id = 0
         self._snapshot = Snapshot()
         self._running = False
+        # Voor de objectherkenning: het nieuwste beeld en de laatste uitkomst.
+        self._work = threading.Condition()
+        self._work_frame = None
+        self._frame_count = 0
+        self._detections = []
 
     def start(self) -> "Pipeline":
         self._running = True
         threading.Thread(target=self._run, name="verwerking", daemon=True).start()
+        if self.objects.available:
+            threading.Thread(target=self._detect_objects, name="objecten", daemon=True).start()
         return self
 
     def stop(self):
@@ -80,8 +91,6 @@ class Pipeline:
         last_frame_id = -1
         last_frame_time = time.time()
         last_placeholder = 0.0
-        count = 0
-        detections = []
         fps_start, fps_frames = time.time(), 0
         last_error = 0.0
 
@@ -100,9 +109,11 @@ class Pipeline:
 
             try:
                 frame = self._resize(frame)
-                if count % self.cfg.object_every == 0:
-                    detections = self.objects.detect(frame)
-                count += 1
+                with self._work:  # geef het beeld door aan de objectherkenning
+                    self._work_frame = frame
+                    self._frame_count += 1
+                    self._work.notify()
+                detections = self._detections
                 faces = self.faces.recognize(frame)
                 self.alerts.process_faces(faces, frame)
 
@@ -126,6 +137,30 @@ class Pipeline:
             if elapsed >= 1:
                 self.fps = fps_frames / elapsed
                 fps_start, fps_frames = time.time(), 0
+
+    def _detect_objects(self):
+        """Objectherkenning op het nieuwste beeld, telkens als er een klaar is.
+
+        Na elke ronde wachten we tot er OBJECT_EVERY nieuwe beelden zijn, zodat
+        er rekenkracht overblijft voor de livestream en de gezichtsherkenning.
+        """
+        done_at = 0
+        last_error = 0.0
+        while self._running:
+            with self._work:
+                if not self._work.wait_for(
+                        lambda: self._frame_count >= done_at + self.cfg.object_every, timeout=1):
+                    continue
+                frame = self._work_frame
+            try:
+                self._detections = self.objects.detect(frame)
+            except Exception:
+                if time.time() - last_error > 10:
+                    log.exception("Fout bij de objectherkenning")
+                    last_error = time.time()
+                time.sleep(0.1)
+            with self._work:
+                done_at = self._frame_count
 
     def _resize(self, frame):
         h, w = frame.shape[:2]
