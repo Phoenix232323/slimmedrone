@@ -4,6 +4,12 @@ Om valse meldingen te voorkomen moet een gezicht een paar beelden achter
 elkaar gezien worden. Daarna komt er voor dezelfde persoon pas weer een
 melding na ALERT_COOLDOWN seconden. Alle meldingen komen ook in
 data/meldingen.csv, handig voor het verslag.
+
+Soorten meldingen ("soort"):
+  bekend    een bekend gezicht is herkend
+  onbekend  een onbekend gezicht is gezien
+  wacht     een wachter van J.A.R.V.I.S. ging af ("waarschuw me als er een hond komt")
+  systeem   iets met het systeem zelf, bijv. de camera-verbinding
 """
 import base64
 import csv
@@ -56,9 +62,9 @@ class AlertManager:
                 continue
             self._last_sent[key] = now
             if face.name:
-                self.add("bekend", f"{face.name} herkend", _thumbnail(frame, face.box))
+                self.add("bekend", f"{face.name} herkend", thumbnail(frame, face.box))
             else:
-                self.add("onbekend", "Onbekend gezicht gedetecteerd", _thumbnail(frame, face.box))
+                self.add("onbekend", "Onbekend gezicht gedetecteerd", thumbnail(frame, face.box))
         for key in list(self._streak):
             if key not in seen:
                 del self._streak[key]
@@ -67,9 +73,17 @@ class AlertManager:
         with self._lock:
             return [a for a in self._alerts if a["id"] > after_id][-limit:]
 
+    def recent(self, limit: int = 10):
+        """De laatste meldingen (nieuwste laatst), bijvoorbeeld voor J.A.R.V.I.S."""
+        with self._lock:
+            return list(self._alerts)[-limit:]
 
-def _thumbnail(frame, box, size=96):
-    x1, y1, x2, y2 = box
+
+def thumbnail(frame, box, size=96):
+    """Klein fotootje (data-URL) van een stukje van het beeld, met wat ruimte eromheen."""
+    if frame is None or box is None:
+        return None
+    x1, y1, x2, y2 = (int(v) for v in box)  # kaders kunnen ook kommagetallen zijn
     pad_x, pad_y = (x2 - x1) // 4, (y2 - y1) // 4
     h, w = frame.shape[:2]
     part = frame[max(0, y1 - pad_y):min(h, y2 + pad_y), max(0, x1 - pad_x):min(w, x2 + pad_x)]
