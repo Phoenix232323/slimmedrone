@@ -1,16 +1,21 @@
 """Objectherkenning: weet wat een hond, mens, tafel, auto... is.
 
-Er zijn twee "motoren" die allebei de 80 objectsoorten van de COCO-dataset kennen:
+Er zijn drie "motoren" die allemaal de 80 objectsoorten van de COCO-dataset kennen:
 
+  * imx500 - de Raspberry Pi AI Camera herkent de objecten zelf, in de camera
+             (zie imx500.py). Kost de processor van de Pi bijna niets.
   * yolo   - YOLO11 van Ultralytics (pip install ultralytics, gebruikt PyTorch).
              Het nauwkeurigst en snelst als PyTorch op je computer werkt.
   * opencv - YOLOX uit de OpenCV Model Zoo, draait op OpenCV zelf.
              Geen PyTorch nodig: lichter om te installeren (handig op de Pi).
 
-OBJECT_BACKEND=auto kiest yolo als dat werkt, en anders opencv.
-Het model wordt de eerste keer automatisch gedownload naar data/models.
+OBJECT_BACKEND=auto kiest de AI Camera als die er is (met CAMERA_SOURCE=picamera),
+anders yolo als dat werkt, en anders opencv. Stopt de AI Camera onderweg, dan
+schakelt hij vanzelf over op yolo/opencv.
+Het YOLO-model wordt de eerste keer automatisch gedownload naar data/models.
 """
 import logging
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -35,33 +40,23 @@ class Detection:
 
 
 class ObjectDetector:
-    def __init__(self, backend: str, models_dir: Path, yolo_path: str, confidence: float = 0.45):
+    def __init__(self, backend: str, models_dir: Path, yolo_path: str, confidence: float = 0.45,
+                 camera=None, imx500_model: str = ""):
         self.confidence = confidence
+        self.models_dir = models_dir
+        self.yolo_path = yolo_path
         self.backend = None
         self.error = ""
+        self.ai_camera = None  # de AI Camera (IMX500), als die het werk doet
+        self._impl = None
         backend = backend.lower()
         if backend in ("uit", "off", "none"):
             self.error = "uitgezet in de instellingen"
             return
-        if backend in ("auto", "yolo"):
-            try:
-                self._impl = _UltralyticsBackend(yolo_path, confidence)
-                self.backend = "yolo"
-            except Exception as exc:  # niet geïnstalleerd, of PyTorch wil niet laden
-                self.error = f"YOLO/PyTorch werkt niet: {exc}"
-                level = logging.INFO if backend == "auto" else logging.WARNING
-                log.log(level, "%s", self.error)
-        if self.backend is None and backend in ("auto", "opencv"):
-            try:
-                self._impl = _OpenCvYoloxBackend(models_dir, confidence)
-                self.backend = "opencv"
-                self.error = ""
-            except Exception as exc:
-                self.error = f"YOLOX laden mislukt: {exc}"
-        if self.backend:
-            log.info("Objectherkenning: %s", self.description)
-        else:
-            log.warning("Objectherkenning staat uit: %s", self.error)
+        if backend in ("auto", "imx500"):
+            self._start_ai_camera(backend, camera, imx500_model)
+        if self.backend is None:
+            self._load(backend)
 
     @property
     def available(self) -> bool:
@@ -69,11 +64,12 @@ class ObjectDetector:
 
     @property
     def description(self) -> str:
-        return {"yolo": "YOLO11 (Ultralytics)", "opencv": "YOLOX (OpenCV)"}.get(self.backend, "uit")
+        return {"imx500": "AI Camera (IMX500, in de camera)", "yolo": "YOLO11 (Ultralytics)",
+                "opencv": "YOLOX (OpenCV)"}.get(self.backend, "uit")
 
     def detect(self, frame) -> list:
-        if not self.backend:
-            return []
+        if self.backend in (None, "imx500"):
+            return []  # bij de AI Camera komen de objecten met het camerabeeld mee
         detections = [
             Detection(label=label, naam=dutch(label), confidence=float(conf),
                       box=tuple(int(v) for v in box))
@@ -81,6 +77,70 @@ class ObjectDetector:
         ]
         detections.sort(key=lambda d: d.confidence, reverse=True)
         return detections
+
+    # -- motor kiezen --------------------------------------------------------
+
+    def _start_ai_camera(self, backend, camera, model_path):
+        """Probeer de AI Camera (IMX500). Lukt het niet, dan blijft self.backend None."""
+        explicit = backend == "imx500"  # zelf gekozen: dan altijd laten weten waarom het niet lukt
+        if camera is None or camera.source.lower() != "picamera":
+            if explicit:
+                log.warning("OBJECT_BACKEND=imx500 werkt alleen met CAMERA_SOURCE=picamera. "
+                            "De objectherkenning draait nu op de processor.")
+            return
+        if camera.started:
+            log.warning("De AI Camera moet klaar zijn vóórdat de camera start; we slaan hem over.")
+            return
+        from . import imx500  # pas hier: picamera2 bestaat alleen op de Raspberry Pi
+
+        try:
+            if not imx500.imx500_present():
+                log.log(logging.WARNING if explicit else logging.INFO,
+                        "Geen AI Camera (IMX500) gevonden; de objectherkenning draait op de processor.")
+                return
+            ai = imx500.AiCamera(model_path or imx500.DEFAULT_MODEL, self.confidence)
+        except Exception as exc:
+            self.error = f"AI Camera werkt niet: {exc}"
+            log.warning("AI Camera werkt niet: %s. De objectherkenning draait nu op de processor.", exc)
+            return
+        ai.on_fail(self._ai_camera_failed)
+        camera.use_ai_camera(ai)
+        self.ai_camera = ai
+        self.backend = "imx500"
+        log.info("Objectherkenning: %s", self.description)
+
+    def _ai_camera_failed(self, reason):
+        """De AI Camera is gestopt: laad YOLO/YOLOX (in een aparte thread, de camera loopt door)."""
+        self.backend = None
+        self.error = f"AI Camera gestopt: {reason}"
+        threading.Thread(target=self._load, args=("auto",), name="objecten-laden", daemon=True).start()
+
+    def _load(self, backend):
+        """Laad een motor die op de processor draait (YOLO11 of YOLOX)."""
+        if backend == "imx500":
+            backend = "auto"  # de AI Camera werkt niet: dan maar op de processor
+        impl, name = None, None
+        if backend in ("auto", "yolo"):
+            try:
+                impl, name = _UltralyticsBackend(self.yolo_path, self.confidence), "yolo"
+            except Exception as exc:  # niet geïnstalleerd, of PyTorch wil niet laden
+                self.error = f"YOLO/PyTorch werkt niet: {exc}"
+                level = logging.INFO if backend == "auto" else logging.WARNING
+                log.log(level, "%s", self.error)
+        if impl is None and backend in ("auto", "opencv"):
+            try:
+                impl, name = _OpenCvYoloxBackend(self.models_dir, self.confidence), "opencv"
+            except Exception as exc:
+                self.error = f"YOLOX laden mislukt: {exc}"
+        if impl is None and backend not in ("auto", "yolo", "opencv"):
+            self.error = f"onbekende OBJECT_BACKEND '{backend}'"
+        if impl is not None:
+            self._impl = impl  # eerst de motor, dan pas zeggen dat hij klaar is
+            self.backend = name
+            self.error = ""
+            log.info("Objectherkenning: %s", self.description)
+        else:
+            log.warning("Objectherkenning staat uit: %s", self.error)
 
 
 class _UltralyticsBackend:

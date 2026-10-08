@@ -18,10 +18,12 @@ class Config:
     camera_source: str
     camera_width: int
     camera_height: int
+    camera_fps: int
     process_width: int
 
     object_backend: str
     yolo_model: str
+    imx500_model: str
     object_confidence: float
     object_every: int
 
@@ -91,9 +93,11 @@ def load_config() -> Config:
         camera_source=env("CAMERA_SOURCE", "0"),
         camera_width=int(env("CAMERA_WIDTH", "1280")),
         camera_height=int(env("CAMERA_HEIGHT", "720")),
+        camera_fps=max(1, int(env("CAMERA_FPS", "30"))),
         process_width=int(env("PROCESS_WIDTH", "960")),
         object_backend=env("OBJECT_BACKEND", "auto"),
         yolo_model=env("YOLO_MODEL", "yolo11n.pt"),
+        imx500_model=env("IMX500_MODEL", "").strip(),  # leeg = het standaardmodel (zie imx500.py)
         object_confidence=float(env("OBJECT_CONFIDENCE", "0.45")),
         object_every=max(1, int(env("OBJECT_EVERY", "1"))),
         face_detect_threshold=float(env("FACE_DETECT_THRESHOLD", "0.8")),
@@ -101,7 +105,7 @@ def load_config() -> Config:
         alert_cooldown=float(env("ALERT_COOLDOWN", "30")),
         host=env("HOST", "0.0.0.0"),
         port=int(env("PORT", "5000")),
-        stream_fps=int(env("STREAM_FPS", "20")),
+        stream_fps=int(env("STREAM_FPS", "30")),
         jpeg_quality=int(env("JPEG_QUALITY", "80")),
         ai_enabled=ai_enabled,
         claude_model=env("CLAUDE_MODEL", "claude-opus-5-5"),

@@ -42,8 +42,12 @@ def main():
               "    python beheer.py gebruiker-toevoegen <naam>\n")
         sys.exit(1)
 
-    camera = Camera(cfg.camera_source, cfg.camera_width, cfg.camera_height).start()
-    objects = ObjectDetector(cfg.object_backend, cfg.models_dir, cfg.yolo_path, cfg.object_confidence)
+    # Eerst de objectherkenning, dan pas de camera starten: kiest hij de AI Camera
+    # (IMX500), dan moet het netwerk in de camera staan voordat de camera begint.
+    camera = Camera(cfg.camera_source, cfg.camera_width, cfg.camera_height, cfg.camera_fps)
+    objects = ObjectDetector(cfg.object_backend, cfg.models_dir, cfg.yolo_path, cfg.object_confidence,
+                             camera=camera, imx500_model=cfg.imx500_model)
+    camera.start()
     faces = FaceEngine(cfg.models_dir, cfg.faces_dir, cfg.face_detect_threshold, cfg.face_match_threshold)
     alerts = AlertManager(cfg.alert_cooldown, cfg.data_dir / "meldingen.csv")
     pipeline = Pipeline(cfg, camera, objects, faces, alerts).start()

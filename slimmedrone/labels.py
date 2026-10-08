@@ -95,6 +95,29 @@ for _english, (_single, _plural, _extra) in LABELS.items():
         _LOOKUP.setdefault(_word.lower(), _english)
 
 
+# Modellen die met TensorFlow getraind zijn (zoals het SSD-model van de AI Camera)
+# nummeren de objecten met de oude COCO-nummers 1 t/m 90. Tien van die nummers worden
+# niet gebruikt; daar staat "-". Plek 0 in deze lijst hoort bij COCO-nummer 1 (person).
+_UNUSED_COCO_IDS = (12, 26, 29, 30, 45, 66, 68, 69, 71, 83)
+_names = iter(LABELS)  # LABELS staat in COCO-volgorde
+COCO90 = ["-" if coco_id in _UNUSED_COCO_IDS else next(_names) for coco_id in range(1, 91)]
+
+# Andere schrijfwijzen die in sommige labellijsten voorkomen.
+_ALIASES = {
+    "motorbike": "motorcycle", "aeroplane": "airplane", "sofa": "couch", "tvmonitor": "tv",
+    "tv monitor": "tv", "television": "tv", "diningtable": "dining table",
+    "pottedplant": "potted plant", "hair dryer": "hair drier", "cellphone": "cell phone",
+    "mobile phone": "cell phone",
+}
+
+
+def coco_key(name: str):
+    """Label uit een model -> onze Engelse COCO-naam. None bij '-' of een onbekend label."""
+    name = (name or "").strip().lower()
+    name = _ALIASES.get(name, name)
+    return name if name in LABELS else None
+
+
 def dutch(label: str) -> str:
     """'dining table' -> 'tafel'. Onbekende namen blijven zoals ze zijn."""
     return LABELS.get(label, (label,))[0]
