@@ -501,7 +501,9 @@ luisteraar.bij = {
     if (modus === "knop") micNote.hidden = true;
   },
   fout(uitleg) {
-    toonMicUitleg(uitleg);
+    // Nog een keer klikken terwijl de uitleg er al staat = uitleg weer weg.
+    if (!micNote.hidden && micNote.textContent === uitleg) micNote.hidden = true;
+    else toonMicUitleg(uitleg);
     zetSpraakKnoppen();
   },
 };
