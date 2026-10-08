@@ -21,6 +21,7 @@ from flask import (Flask, Response, abort, jsonify, redirect, render_template, r
 from . import system
 from .auth import LoginLimiter
 from .faces import clean_name
+from .assistant import pipeline_stats
 from .settings import Settings
 from .zoom import crop
 
@@ -161,7 +162,7 @@ def create_app(cfg, pipeline, faces, objects, alerts, assistant, users,
             meldingen=alerts.since(after),
             ai=assistant.mode,
             objectherkenning=objects.description,
-            prestaties=_performance(pipeline),
+            prestaties=pipeline_stats(pipeline),
             systeem=system.status(),
             weergave=current_view(),
             wachters=activity.watches() if activity else [],
@@ -381,10 +382,3 @@ def _json_body() -> dict:
     data = request.get_json(silent=True)
     return data if isinstance(data, dict) else {}
 
-
-def _performance(pipeline) -> dict:
-    """Snelheid van de verwerking: pipeline.stats() als die er is, anders alleen de fps."""
-    stats = getattr(pipeline, "stats", None)
-    if callable(stats):
-        return stats()
-    return {"beeld_fps": round(pipeline.fps, 1)}

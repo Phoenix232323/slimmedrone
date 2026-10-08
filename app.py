@@ -119,6 +119,8 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
                         datefmt="%H:%M:%S")
     logging.getLogger("werkzeug").setLevel(logging.WARNING)
+    for name in ("httpx", "httpx2"):  # niet elke vraag aan Claude als aparte regel loggen
+        logging.getLogger(name).setLevel(logging.WARNING)
     cfg = load_config()
 
     users = UserStore(cfg.users_file)

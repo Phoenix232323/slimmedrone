@@ -421,6 +421,8 @@ class Assistant:
         """De tools voor Claude. Altijd dezelfde lijst in dezelfde volgorde (goed voor de cache).
 
         Internet zoeken kost per zoekopdracht iets extra, daarom kan het uit (JARVIS_WEB).
+        Zet je dat tussen twee vragen om, dan is dat geen probleem: eerdere beurten
+        gaan als gewone tekst mee, dus er hoort niets bij de oude toollijst.
         """
         if not web:
             return TOOLS
@@ -791,7 +793,7 @@ class Assistant:
                 lines.append(f"- Camera: verbonden (bron: {camera.source})")
             else:
                 lines.append(f"- Camera: NIET verbonden ({camera.error or 'geen beeld'})")
-        stats = _pipeline_stats(self.pipeline)
+        stats = pipeline_stats(self.pipeline)
         speed = [f"{_nl(stats['beeld_fps'])} beelden per seconde naar de website"]
         if "camera_fps" in stats:
             speed.append(f"camera {_nl(stats['camera_fps'])}/s")
@@ -891,9 +893,10 @@ class Assistant:
             return f"Het is vandaag {_date_text(time.time())}."
 
         # Internet en algemene kennis kan alleen Claude.
+        needs_claude = NEEDS_CLAUDE if self.client is None else CLAUDE_DOWN
         if re.search(r"\b(het weer|weerbericht|weersverwachting|wat voor weer|regen\w*|sneeuw\w*|onweer|"
                      r"buiten|nieuws|zoek op|opzoeken|google|internet|wikipedia)\b", q):
-            return NEEDS_CLAUDE
+            return needs_claude
 
         # Het systeem.
         if re.search(r"hoe gaat het( met je| met jou)?\??$|alles goed", q):
@@ -943,8 +946,8 @@ class Assistant:
             reply.action("zoom: midden")
             return "Ik zoom in op het midden van het beeld."
 
-        # Vragen over het camerabeeld.
-        if "wie" in words:
+        # Vragen over het camerabeeld. ("wie won de Tour?" gaat niet over het beeld.)
+        if re.search(r"\bwie\b.*\b(zie|ziet|zien|herken\w*|beeld|camera|daar|dat|er)\b|^wie\W*$", q):
             if snap.frame is None:
                 return NO_IMAGE
             known = sorted({f.name for f in snap.faces if f.name})
@@ -984,7 +987,7 @@ class Assistant:
 
         if words & THANKS:
             return f"Graag gedaan, {name}."
-        return ("Die vraag kan ik in de lokale modus nog niet beantwoorden. " + NEEDS_CLAUDE +
+        return ("Die vraag kan ik in de lokale modus nog niet beantwoorden. " + needs_claude +
                 " Zeg \"help\" voor wat ik nu al kan.")
 
     def _health_sentence(self) -> str:
@@ -1211,6 +1214,7 @@ console.anthropic.com)."""
 
 NEEDS_CLAUDE = ("Voor algemene vragen, het weer of het nieuws heb ik Claude nodig. Vul op de pagina "
                 "**Instellingen** een Claude-sleutel in, dan kan ik dat ook (en op internet zoeken).")
+CLAUDE_DOWN = "Voor algemene vragen, het weer of het nieuws heb ik Claude nodig, en die is nu even niet bereikbaar."
 NO_IMAGE = "Ik heb nog geen camerabeeld binnen. Controleer de camera."
 
 GREETINGS = {"hallo", "hoi", "hey", "hee", "hai", "hi", "hello", "yo", "dag", "goedemorgen",
@@ -1269,7 +1273,7 @@ def _scene_text(snap, zoom_status) -> str:
     return "\n".join(lines)
 
 
-def _pipeline_stats(pipeline) -> dict:
+def pipeline_stats(pipeline) -> dict:
     """pipeline.stats() als die er is, anders alleen de beelden per seconde."""
     stats = getattr(pipeline, "stats", None)
     if callable(stats):
