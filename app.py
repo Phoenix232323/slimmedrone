@@ -10,6 +10,7 @@ import ipaddress
 import logging
 import os
 import re
+import signal
 import socket
 import ssl
 import subprocess
@@ -175,6 +176,11 @@ def main():
                           activity=activity, settings=settings, recorder=recorder, stats=stats)
     app = create_app(cfg, pipeline, faces, objects, alerts, assistant, users,
                      settings=settings, activity=activity, recorder=recorder, media=media, stats=stats)
+    # Gaat het venster dicht of schakelt de Pi uit, stop dan net zo netjes als met Ctrl+C:
+    # een lopende opname wordt afgemaakt en de statistiek van deze minuut opgeslagen.
+    for name in ("SIGTERM", "SIGHUP"):
+        if hasattr(signal, name):
+            signal.signal(getattr(signal, name), lambda *_: sys.exit(0))
     tls = https_files(cfg) if cfg.https else None
     if tls:
         app.config["SESSION_COOKIE_SECURE"] = True  # inlogcookie alleen via https

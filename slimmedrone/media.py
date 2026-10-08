@@ -377,11 +377,12 @@ class Media:
         info = read_avi(path)
         if not info.frames:
             raise ValueError("Deze opname bevat geen beelden")
+        file = open(path, "rb")  # nu al openen: lukt dat niet, dan hoort de website dat meteen
 
         def frames():
             interval = 1.0 / info.fps
             next_time = time.monotonic()
-            with open(path, "rb") as f:
+            with file as f:
                 for pos, size in info.frames:
                     f.seek(pos)
                     jpeg = f.read(size)

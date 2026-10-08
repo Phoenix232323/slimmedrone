@@ -100,6 +100,7 @@ class UserStore:
 
 
 def check_password(password: str):
+    """ValueError met uitleg als het wachtwoord te kort (of veel te lang) is."""
     if not isinstance(password, str) or len(password) < MIN_PASSWORD_LENGTH:
         raise ValueError(f"Wachtwoord moet minstens {MIN_PASSWORD_LENGTH} tekens zijn.")
     if len(password) > 200:

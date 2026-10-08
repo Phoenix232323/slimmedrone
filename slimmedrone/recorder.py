@@ -202,7 +202,10 @@ class Recorder:
             return  # map bestaat nog niet
         for path in paths:
             try:
-                if repair_avi(path):
+                if path.stat().st_size < HEADER_SIZE:  # gestopt nog vóór het eerste beeld
+                    path.unlink()
+                    log.warning("Lege opname %s verwijderd (niet netjes afgesloten).", path.name)
+                elif repair_avi(path):
                     log.warning("Opname %s was niet netjes afgesloten (stroom uitgevallen?); hersteld.", path.name)
             except (OSError, ValueError, struct.error) as exc:
                 log.warning("Opname %s kon niet worden hersteld: %s", path.name, exc)
@@ -267,8 +270,8 @@ class Recorder:
             s.thread.start()  # eerst starten, dan pas zichtbaar maken (stop() mag er meteen op wachten)
             self._session = s
         who = f" door {user}" if user else ""
-        log.info("Opname gestart%s: %s (hooguit %d minuten, %g beelden/s)", who, path, minutes, self.fps)
-        self._alert(f"Opname gestart{who} (stopt vanzelf na {minutes} minuten)")
+        log.info("Opname gestart%s: %s (hooguit %s, %g beelden/s)", who, path, _minutes(minutes), self.fps)
+        self._alert(f"Opname gestart{who} (stopt vanzelf na {_minutes(minutes)})")
         return self.status()
 
     def stop(self, reason: str | None = None, wait: float = 10.0) -> dict:
@@ -317,7 +320,7 @@ class Recorder:
                     self._write_frame(s, *item)
                 now = time.monotonic()
                 if now - s.started >= s.max_minutes * 60:
-                    self._auto_stop(s, f"de maximale duur van {s.max_minutes} minuten is bereikt")
+                    self._auto_stop(s, f"de maximale duur van {_minutes(s.max_minutes)} is bereikt")
                 if now - last_disk >= DISK_CHECK_EVERY:
                     last_disk = now
                     free = disk_free_mb(self.folder)
@@ -409,6 +412,11 @@ def disk_free_mb(folder: Path):
         return shutil.disk_usage(folder).free // (1024 * 1024)
     except OSError:
         return None
+
+
+def _minutes(n) -> str:
+    """1 -> '1 minuut', 10 -> '10 minuten'."""
+    return f"{n:g} minu{'ut' if n == 1 else 'ten'}"
 
 
 def _clock(seconds: float) -> str:

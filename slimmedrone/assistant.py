@@ -108,8 +108,9 @@ sportuitslagen, openingstijden, of feiten die je niet zeker weet. Noem in je ant
 als die gegeven is, en vraag het anders kort.
 
 # Veiligheid (altijd)
-- Je kunt alleen kijken, zoomen, foto's en video-opnames maken, waarschuwen en informatie opzoeken. Je bestuurt de \
-drone niet en het systeem grijpt nergens in. Vraagt iemand iets anders, leg dat dan vriendelijk uit.
+- Je kunt alleen kijken, zoomen, foto's en video-opnames maken, waarschuwen en informatie opzoeken. \
+Je bestuurt de drone niet en het systeem grijpt nergens in. Vraagt iemand iets anders, leg dat dan \
+vriendelijk uit.
 - Namen van personen haal je alleen uit de lokale gezichtsherkenning. Herken zelf niemand aan het \
 uiterlijk en raad geen identiteit, ook niet van bekende mensen. Een gezicht dat de herkenning \
 onbekend noemt, is voor jou ook onbekend. Zoek ook niet op internet uit wie iemand in beeld is.
@@ -881,10 +882,11 @@ class Assistant:
         except RecorderError as exc:
             return ToolResult(str(exc), fout=True)
         limit = status["max_minuten"]
-        text = (f"De opname is gestart ({status['bestand']}). Hij stopt vanzelf na {limit} "
-                f"minu{'ut' if limit == 1 else 'ten'}, of eerder als je zegt dat ik moet stoppen.")
+        minutes = f"{limit} minu{'ut' if limit == 1 else 'ten'}"
+        text = (f"De opname is gestart ({status['bestand']}). Hij stopt vanzelf na {minutes}, "
+                "of eerder als je zegt dat ik moet stoppen.")
         if wanted and wanted > limit:
-            text += f" Langer dan {limit} minuten kan niet: dat is de ingestelde grens (OPNAME_MAX_MINUTEN)."
+            text += f" Langer dan {minutes} kan niet: dat is de ingestelde grens (OPNAME_MAX_MINUTEN)."
         return ToolResult(text, actie="opname gestart")
 
     def _tool_stop_recording(self, args, snap, user):
@@ -1033,7 +1035,7 @@ class Assistant:
                 "Foto gemaakt. Je vindt hem in de chat en op de pagina Media (map data/fotos)."
 
         # Video-opname. Eerst stoppen: "stop de opname" bevat ook het woord opname.
-        if re.search(r"\b(stop|stoppen|beëindig\w*|klaar met)\b.*\b(opname|opnemen|filmen|video)\b|"
+        if re.search(r"\b(stop|stoppen|beëindig\w*|klaar met)\b.*\b(opnames?|opnemen|filmen|video)\b|"
                      r"\b(niet meer|hou op met|houd op met) (op)?(nemen|filmen)\b", q):
             return run("stop_recording").tekst
         if re.search(r"\b(start|begin|maak|neem|starten|beginnen|maken)\b.*\b(opname|video|filmpje)\b|"
