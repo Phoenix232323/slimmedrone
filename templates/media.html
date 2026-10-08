@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Media - SlimmeDrone{% endblock %}
+{% block body_class %}page-media{% endblock %}
+{% block body %}
+{% include "_header.html" %}
+<main class="page media-page" id="inhoud">
+  <div class="page-head">
+    <div>
+      <h1>Media</h1>
+      <p>Foto's en opnames die op de Raspberry Pi bewaard zijn.</p>
+    </div>
+    <div class="page-actions">
+      <span class="badge" id="diskFree" hidden title="Vrije schijfruimte op de Raspberry Pi">
+        <svg class="i" aria-hidden="true"><use href="#i-disk"/></svg><span></span></span>
+      <button type="button" class="btn icon" id="mediaRefresh" aria-label="Vernieuwen" title="Vernieuwen">
+        <svg class="i" aria-hidden="true"><use href="#i-refresh"/></svg></button>
+    </div>
+  </div>
+
+  <div class="filter-row">
+    <div class="seg" id="mediaTabs" role="tablist" aria-label="Soort media">
+      <button type="button" role="tab" id="tabFotos" data-soort="fotos" aria-selected="true" aria-controls="mediaGrid">
+        Foto's <span class="seg-count" id="countFotos"></span></button>
+      <button type="button" role="tab" id="tabOpnames" data-soort="opnames" aria-selected="false" aria-controls="mediaGrid" tabindex="-1">
+        Opnames <span class="seg-count" id="countOpnames"></span></button>
+    </div>
+    <p class="hint" id="mediaSummary" aria-live="polite"></p>
+  </div>
+
+  <p class="notice danger" id="mediaError" role="alert" hidden></p>
+
+  <ul class="media-grid" id="mediaGrid" role="tabpanel" aria-labelledby="tabFotos" aria-busy="true">
+    {% for _ in range(8) %}
+    <li class="media-card skeleton-card" aria-hidden="true"><span class="skeleton thumb-sk"></span>
+      <span class="skeleton line"></span><span class="skeleton line short"></span></li>
+    {% endfor %}
+  </ul>
+
+  <div class="empty empty-lg" id="mediaEmpty" hidden>
+    <svg class="i" aria-hidden="true"><use href="#i-image"/></svg>
+    <h2 id="mediaEmptyTitle">Nog geen foto's</h2>
+    <p id="mediaEmptyText">Maak een foto met de knop <b>Foto</b> op het Live-scherm, of vraag J.A.R.V.I.S.
+      <q>Maak een foto</q>.</p>
+    <a class="btn" href="/"><svg class="i" aria-hidden="true"><use href="#i-live"/></svg>Naar Live</a>
+  </div>
+</main>
+
+{# Foto groot bekijken (pijltjestoetsen = vorige/volgende, Esc = sluiten). #}
+<dialog class="lightbox" id="lightbox" aria-labelledby="lbTitle">
+  <div class="lightbox-head">
+    <div class="lightbox-title">
+      <h2 id="lbTitle">Foto</h2>
+      <p class="hint" id="lbMeta"></p>
+    </div>
+    <a class="btn icon ghost" id="lbDownload" href="#" aria-label="Downloaden" title="Downloaden">
+      <svg class="i" aria-hidden="true"><use href="#i-download"/></svg></a>
+    <button type="button" class="btn icon ghost danger" id="lbDelete" aria-label="Verwijderen" title="Verwijderen">
+      <svg class="i" aria-hidden="true"><use href="#i-trash"/></svg></button>
+    <button type="button" class="btn icon ghost" id="lbClose" aria-label="Sluiten (Esc)" title="Sluiten (Esc)">
+      <svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+  </div>
+  <div class="lightbox-stage">
+    <button type="button" class="btn icon lightbox-nav prev" id="lbPrev" aria-label="Vorige foto (pijl links)" title="Vorige (←)">
+      <svg class="i" aria-hidden="true"><use href="#i-chevron-left"/></svg></button>
+    <img id="lbImg" alt="">
+    <button type="button" class="btn icon lightbox-nav next" id="lbNext" aria-label="Volgende foto (pijl rechts)" title="Volgende (→)">
+      <svg class="i" aria-hidden="true"><use href="#i-chevron-right"/></svg></button>
+    {# De speler voor opnames: de server stuurt de opname als MJPEG-stroom, net als het livebeeld. #}
+    <div class="player-end" id="playerEnd" hidden>
+      <button type="button" class="btn primary" id="playerAgain">
+        <svg class="i" aria-hidden="true"><use href="#i-reset"/></svg>Opnieuw afspelen</button>
+    </div>
+  </div>
+  <div class="player-bar" id="playerBar" hidden>
+    <span class="player-time" id="playerTime">0:00</span>
+    <span class="progress"><i id="playerProgress"></i></span>
+    <span class="player-time" id="playerDur">0:00</span>
+  </div>
+</dialog>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+<script src="{{ url_for('static', filename='media.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Statistieken - SlimmeDrone{% endblock %}
+{% block body_class %}page-stats{% endblock %}
+{% block body %}
+{% include "_header.html" %}
+<main class="page stats-page" id="inhoud">
+  <div class="page-head">
+    <div>
+      <h1>Statistieken</h1>
+      <p>Wat de camera zag: hoeveel personen en objecten, en welke meldingen er waren.</p>
+    </div>
+    <div class="page-actions">
+      <a class="btn" id="csvBtn" href="/api/meldingen.csv" download="meldingen.csv">
+        <svg class="i" aria-hidden="true"><use href="#i-download"/></svg>Meldingen (CSV)</a>
+    </div>
+  </div>
+
+  {# Eén rij met de periode boven alles: alle tegels en grafieken volgen deze keuze. #}
+  <div class="filter-row">
+    <div class="seg" id="periodSeg" role="group" aria-label="Periode">
+      <button type="button" data-periode="uur" aria-pressed="true">1 uur</button>
+      <button type="button" data-periode="dag" aria-pressed="false">24 uur</button>
+    </div>
+    <p class="hint" id="statsUpdated" aria-live="polite"></p>
+  </div>
+
+  <p class="notice danger" id="statsError" role="alert" hidden></p>
+
+  <div class="stats-body" id="statsBody" aria-busy="true">
+    <section class="kpis" aria-label="Samenvatting">
+      <div class="kpi">
+        <span class="kpi-label">Max. personen tegelijk</span>
+        <b class="kpi-value" id="kpiMax"><span class="skeleton line short"></span></b>
+        <span class="kpi-sub" data-periode-tekst>in het afgelopen uur</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">Meldingen</span>
+        <b class="kpi-value" id="kpiAlerts"><span class="skeleton line short"></span></b>
+        <span class="kpi-sub" data-periode-tekst>in het afgelopen uur</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">Onbekende gezichten</span>
+        <b class="kpi-value" id="kpiUnknown"><span class="skeleton line short"></span></b>
+        <span class="kpi-sub" data-periode-tekst>in het afgelopen uur</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">Bekende personen gezien</span>
+        <b class="kpi-value" id="kpiKnown"><span class="skeleton line short"></span></b>
+        <span class="kpi-sub" id="kpiKnownNames">&nbsp;</span>
+      </div>
+    </section>
+
+    <section class="panel chart-card chart-wide" aria-labelledby="hTrend">
+      <header class="panel-head">
+        <div>
+          <h2 id="hTrend">Personen en objecten in beeld</h2>
+          <p class="panel-sub" id="trendSub">Per 10 seconden, het hoogste aantal in dat blok</p>
+        </div>
+        <div class="legend" aria-hidden="true">
+          <span><i class="key line s1"></i>Personen</span>
+          <span><i class="key line s2"></i>Objecten</span>
+        </div>
+      </header>
+      <div class="chart" id="trendChart" role="img" aria-labelledby="hTrend trendSub"></div>
+      <details class="disclosure table-view">
+        <summary>Als tabel bekijken</summary>
+        <div class="disclosure-body"><table class="table compact" id="trendTable"></table></div>
+      </details>
+    </section>
+
+    <section class="panel chart-card" aria-labelledby="hAlertsHour">
+      <header class="panel-head">
+        <div>
+          <h2 id="hAlertsHour">Meldingen per uur</h2>
+          <p class="panel-sub">De afgelopen 24 uur, per soort</p>
+        </div>
+        <div class="legend" aria-hidden="true">
+          <span><i class="key box k-onbekend"></i>Onbekend</span>
+          <span><i class="key box k-bekend"></i>Bekend</span>
+          <span><i class="key box k-wacht"></i>Wachter</span>
+          <span><i class="key box k-systeem"></i>Systeem</span>
+        </div>
+      </header>
+      <div class="chart" id="alertChart" role="img" aria-labelledby="hAlertsHour"></div>
+      <details class="disclosure table-view">
+        <summary>Als tabel bekijken</summary>
+        <div class="disclosure-body"><table class="table compact" id="alertTable"></table></div>
+      </details>
+    </section>
+
+    <section class="panel chart-card" aria-labelledby="hTop">
+      <header class="panel-head">
+        <div>
+          <h2 id="hTop">Meest gezien</h2>
+          <p class="panel-sub" id="topSub">Minuten in beeld, afgelopen uur</p>
+        </div>
+      </header>
+      <ol class="bar-list" id="topList"></ol>
+      <div class="empty" id="topEmpty" hidden>
+        <svg class="i" aria-hidden="true"><use href="#i-boxes"/></svg><p>Nog geen objecten gezien in deze periode.</p></div>
+    </section>
+  </div>
+  <div class="chart-tip" id="chartTip" role="tooltip" hidden></div>
+</main>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+<script src="{{ url_for('static', filename='grafiek.js') }}"></script>
+<script src="{{ url_for('static', filename='statistieken.js') }}"></script>
+{% endblock %}
