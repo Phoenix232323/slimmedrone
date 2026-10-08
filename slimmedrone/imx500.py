@@ -60,8 +60,6 @@ def imx500_present() -> bool:
 class AiCamera:
     """Het neurale netwerk in de AI Camera, plus het uitlezen van de herkenningen."""
 
-    description = "AI Camera (IMX500, in de camera)"
-
     def __init__(self, model_path: str, confidence: float = 0.45):
         name = os.path.basename(model_path)
         if not os.path.isfile(model_path):
@@ -75,7 +73,7 @@ class AiCamera:
             # Dit zet het netwerk (de "firmware") in de camera. Moet vóór Picamera2().
             self.imx500 = IMX500(model_path)
         except Exception as exc:
-            raise AiCameraError(f"het netwerk {name} in de camera zetten is mislukt ({exc})",
+            raise AiCameraError(f"de AI Camera kon het netwerk {name} niet laden ({exc})",
                                 REINSTALL_HINT) from exc
 
         # "Intrinsics": wat het model over zichzelf vertelt (soort taak, labels, kaders...).

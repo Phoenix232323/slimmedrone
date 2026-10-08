@@ -53,6 +53,7 @@ class StreamHandler(BaseHTTPRequestHandler):
                 # Wacht op een nieuw beeld (de camera geeft een seintje).
                 frame_id, frame, _ = camera.wait_frame(last_id, timeout=1.0)
                 if frame is None or frame_id == last_id:
+                    last_id = frame_id  # (nog) geen beeld: de volgende keer echt wachten
                     continue
                 last_id = frame_id
                 ok, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, QUALITY])

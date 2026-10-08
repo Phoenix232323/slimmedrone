@@ -178,6 +178,7 @@ class Pipeline:
             frame_id, frame, camera_detections = self.camera.wait_frame(last_id, timeout=0.5)
             now = time.monotonic()
             if frame is None or frame_id == last_id:
+                last_id = frame_id  # (nog) geen beeld: de volgende keer echt wachten
                 if now - last_frame_time > 2 and now - last_placeholder > 1:
                     self._publish(_placeholder(self.camera), Snapshot(time=time.time()), count=False)
                     last_placeholder = now
