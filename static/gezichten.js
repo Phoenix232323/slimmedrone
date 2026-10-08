@@ -19,14 +19,24 @@ function requireName() {
   return name;
 }
 
+// Foto van de persoon, of de eerste letter als er (nog) geen foto is.
+function avatar(name) {
+  const box = el("span", { class: "avatar", "aria-hidden": "true" });
+  const img = el("img", { src: `/api/faces/${encodeURIComponent(name)}/foto?t=${Date.now()}`, alt: "" });
+  img.addEventListener("error", () => { box.textContent = name.slice(0, 1).toUpperCase(); });
+  box.append(img);
+  return box;
+}
+
 async function loadPeople() {
   const { personen } = await api("/api/faces");
   const list = $("#people");
   list.replaceChildren(...personen.map((p) => el("li", {},
-    el("img", { src: `/api/faces/${encodeURIComponent(p.naam)}/foto?t=${Date.now()}`, alt: `Gezicht van ${p.naam}` }),
+    avatar(p.naam),
     el("b", {}, p.naam),
     el("small", {}, p.fotos === 1 ? "1 foto" : `${p.fotos} foto's`),
-    el("button", { class: "btn small danger", onclick: () => removePerson(p.naam) }, "Verwijderen"),
+    el("button", { class: "btn small danger", type: "button", "aria-label": `${p.naam} verwijderen`,
+      onclick: () => removePerson(p.naam) }, icon("trash"), "Verwijderen"),
   )));
   $("#peopleCount").textContent = personen.length;
   $("#peopleEmpty").hidden = personen.length > 0;
@@ -99,3 +109,6 @@ $("#uploadBtn").addEventListener("click", async () => {
 });
 
 loadPeople();
+// Eén keer de status ophalen: voor de bovenbalk en om te zien of de server een instellingenpagina heeft.
+// (Met een heel hoge "na" stuurt de server geen meldingen met fotootjes mee.)
+api("/api/status?na=999999999").then(leesStatus).catch(() => {});

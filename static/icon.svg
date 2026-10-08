@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Pictogram van de SlimmeDrone (tabblad, telefoon-startscherm). De drone staat binnen
+       de middelste 70%, zodat hij ook in een rond of afgerond pictogram past. -->
+  <rect width="512" height="512" fill="#03060c"/>
+  <g fill="none" stroke="#22d3ee" stroke-width="16" stroke-linecap="square">
+    <circle cx="186" cy="186" r="40"/><circle cx="326" cy="186" r="40"/>
+    <circle cx="186" cy="326" r="40"/><circle cx="326" cy="326" r="40"/>
+    <path d="M216 216l22 22M296 216l-22 22M216 296l22-22M296 296l-22-22"/>
+    <path d="M120 150v-30h30M392 150v-30h-30M120 362v30h30M392 362v30h-30" stroke-width="10" stroke-opacity=".6"/>
+  </g>
+  <rect x="232" y="232" width="48" height="48" fill="#22d3ee"/>
+</svg>

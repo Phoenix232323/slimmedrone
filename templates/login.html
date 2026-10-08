@@ -3,24 +3,35 @@
 {% block body_class %}login-page{% endblock %}
 {% block body %}
 <main class="login-wrap">
-  <form class="login-card" method="post">
+  <form class="panel login-card" method="post">
     <div class="login-brand">
       {% include "_logo.html" %}
       <div>
         <h1>SlimmeDrone</h1>
-        <p>Grondstation, alleen voor het projectteam</p>
+        <p class="label">Grondstation</p>
+        <p class="sub">Alleen voor het projectteam</p>
       </div>
     </div>
-    {% if error %}<div class="form-error" role="alert">{{ error }}</div>{% endif %}
-    <label>Gebruikersnaam
-      <input name="gebruiker" value="{{ username }}" autocomplete="username" autocapitalize="none" required
-             {{ '' if username else 'autofocus' }}>
+
+    {% if error %}
+    <div class="form-error" role="alert">
+      <svg class="i" aria-hidden="true"><use href="#i-alert"/></svg>{{ error }}
+    </div>
+    {% endif %}
+
+    <label class="field">
+      <span class="label">Gebruikersnaam</span>
+      <input name="gebruiker" value="{{ username }}" autocomplete="username" autocapitalize="none"
+             spellcheck="false" required {{ '' if username else 'autofocus' }}>
     </label>
-    <label>Wachtwoord
+    <label class="field">
+      <span class="label">Wachtwoord</span>
       <input name="wachtwoord" type="password" autocomplete="current-password" required
              {{ 'autofocus' if username else '' }}>
     </label>
-    <button class="btn primary wide">Inloggen</button>
+    <button class="btn primary wide">Inloggen
+      <svg class="i" aria-hidden="true"><use href="#i-arrow"/></svg>
+    </button>
     <p class="login-note">Geen account? Vraag de beheerder om er een te maken met
       <code>python beheer.py gebruiker-toevoegen</code>.</p>
   </form>

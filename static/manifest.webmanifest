@@ -1,0 +1,16 @@
+{
+  "name": "SlimmeDrone grondstation",
+  "short_name": "SlimmeDrone",
+  "description": "Live camerabeeld, gezichtsherkenning en J.A.R.V.I.S. van de SlimmeDrone.",
+  "lang": "nl",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#03060c",
+  "theme_color": "#03060c",
+  "icons": [
+    {"src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"},
+    {"src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable"}
+  ]
+}

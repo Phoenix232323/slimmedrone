@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}Instellingen - SlimmeDrone{% endblock %}
+{% block body_class %}page-settings{% endblock %}
+{% block body %}
+{% include "_header.html" %}
+<main class="page settings-page" id="inhoud" data-ai="{{ ai_mode }}">
+  <div class="page-head">
+    <h1>Instellingen</h1>
+    <p>Slimme AI, spraak en wat je in het camerabeeld ziet.</p>
+  </div>
+
+  <div class="settings-grid">
+    <div class="settings-main">
+
+      <section class="panel" id="secAi" aria-labelledby="hAi">
+        <header class="panel-head">
+          <svg class="i" aria-hidden="true"><use href="#i-key"/></svg>
+          <h2 id="hAi">Slimme AI (Claude)</h2>
+          <span class="status-tag" id="aiBadge">Laden...</span>
+        </header>
+        <div class="panel-body">
+          <p class="intro">Met een sleutel van Anthropic gebruikt J.A.R.V.I.S. <b>Claude</b>: net zo slim als ChatGPT of
+            Copilot. Hij denkt dan echt mee, begrijpt het camerabeeld en kan op internet zoeken. Zonder sleutel
+            draait hij in de <b>lokale modus</b> en begrijpt hij alleen vaste zinnen.</p>
+          <p class="notice warn" id="aiProblem" role="alert" hidden></p>
+
+          <div class="setting setting-key">
+            <div class="setting-text">
+              <h3>API-sleutel</h3>
+              <p id="keyStatus" aria-live="polite">Laden...</p>
+            </div>
+            <form class="key-form" id="keyForm" autocomplete="off">
+              <label class="visually-hidden" for="keyInput">Nieuwe API-sleutel</label>
+              <input id="keyInput" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-...">
+              <button class="btn primary" id="keySave">Opslaan</button>
+              <button type="button" class="btn danger" id="keyRemove" hidden>Verwijderen</button>
+            </form>
+            <p class="hint">De sleutel wordt alleen op de Raspberry Pi bewaard en daarna nooit meer volledig getoond.</p>
+          </div>
+
+          <div class="setting">
+            <div class="setting-text">
+              <h3>Denkniveau</h3>
+              <p>Hoe grondig Claude nadenkt. Hoger is slimmer bij moeilijke vragen, maar trager en iets duurder.</p>
+            </div>
+            <div class="seg" id="effortSeg" role="group" aria-label="Denkniveau">
+              <button type="button" data-effort="low" aria-pressed="false">Snel</button>
+              <button type="button" data-effort="medium" aria-pressed="false">Normaal</button>
+              <button type="button" data-effort="high" aria-pressed="false">Grondig</button>
+            </div>
+          </div>
+
+          <div class="setting">
+            <div class="setting-text">
+              <h3>Op internet zoeken</h3>
+              <p>Voor vragen over het weer, nieuws of feiten. Elke zoekopdracht kost een klein beetje extra.</p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" role="switch" id="webToggle"><span class="track"></span>
+              <span class="visually-hidden">Op internet zoeken</span>
+            </label>
+          </div>
+
+          <div class="setting">
+            <div class="setting-text">
+              <h3>Model</h3>
+              <p><code id="modelName">—</code></p>
+            </div>
+          </div>
+
+          <aside class="costs" aria-labelledby="hCosts">
+            <h3 class="label" id="hCosts">Wat kost het?</h3>
+            <p>Claude is niet gratis: Anthropic rekent per gebruik (per stukje tekst, "tokens"). Een gewone vraag
+              kost meestal een paar cent; met <b>Grondig</b> en internet zoeken iets meer. Stel in de console een
+              maandlimiet in, dan kan het nooit duur worden.</p>
+            <ol class="steps">
+              <li>Maak een account op console.anthropic.com en zet er wat tegoed op.</li>
+              <li>Ga naar <b>API Keys</b> en klik op <b>Create Key</b>.</li>
+              <li>Plak de sleutel (begint met <code>sk-ant-</code>) hierboven en klik op Opslaan.</li>
+            </ol>
+            <a class="btn small" href="https://console.anthropic.com/" target="_blank" rel="noopener noreferrer">
+              console.anthropic.com <svg class="i" aria-hidden="true"><use href="#i-external"/></svg></a>
+          </aside>
+        </div>
+      </section>
+
+      <section class="panel" id="secVoice" aria-labelledby="hVoice">
+        <header class="panel-head">
+          <svg class="i" aria-hidden="true"><use href="#i-speaker"/></svg>
+          <h2 id="hVoice">Spraak</h2>
+          <span class="status-tag">Alleen in deze browser</span>
+        </header>
+        <div class="panel-body">
+          <p class="notice" id="micInfo"></p>
+          <div class="setting">
+            <div class="setting-text"><h3>Antwoorden voorlezen</h3>
+              <p>J.A.R.V.I.S. spreekt zijn antwoord uit, zin voor zin terwijl het binnenkomt.</p></div>
+            <label class="switch"><input type="checkbox" role="switch" id="sSpeak"><span class="track"></span>
+              <span class="visually-hidden">Antwoorden voorlezen</span></label>
+          </div>
+          <div class="setting">
+            <div class="setting-text"><h3>Stem</h3><p>Welke stemmen er zijn, hangt af van je browser en computer.</p></div>
+            <div class="inline-controls">
+              <label class="visually-hidden" for="sVoice">Stem</label>
+              <select id="sVoice"></select>
+              <button type="button" class="btn" id="sTest">
+                <svg class="i" aria-hidden="true"><use href="#i-speaker"/></svg>Test</button>
+            </div>
+          </div>
+          <div class="setting">
+            <div class="setting-text"><h3>Tempo</h3><p>Hoe snel J.A.R.V.I.S. praat.</p></div>
+            <div class="inline-controls">
+              <label class="visually-hidden" for="sRate">Tempo</label>
+              <input type="range" id="sRate" min="0.7" max="1.5" step="0.1" value="1">
+              <output id="sRateOut" for="sRate">1.0×</output>
+            </div>
+          </div>
+          <div class="setting">
+            <div class="setting-text"><h3>Wekwoord "Jarvis"</h3>
+              <p>De microfoon blijft luisteren; begin een vraag met "Jarvis, ..." om hem te stellen.</p></div>
+            <label class="switch"><input type="checkbox" role="switch" id="sWake"><span class="track"></span>
+              <span class="visually-hidden">Wekwoord Jarvis</span></label>
+          </div>
+          <div class="setting">
+            <div class="setting-text"><h3>Meldingen uitspreken</h3>
+              <p>Zegt nieuwe meldingen hardop, bijvoorbeeld "Onbekend gezicht gedetecteerd".</p></div>
+            <label class="switch"><input type="checkbox" role="switch" id="sAlerts"><span class="track"></span>
+              <span class="visually-hidden">Meldingen uitspreken</span></label>
+          </div>
+          <div class="setting">
+            <div class="setting-text"><h3>Piepje bij een melding</h3>
+              <p>Een kort geluidje; twee piepjes bij een onbekend gezicht.</p></div>
+            <div class="inline-controls">
+              <button type="button" class="btn small" id="sBeepTest">Test</button>
+              <label class="switch"><input type="checkbox" role="switch" id="sBeep"><span class="track"></span>
+                <span class="visually-hidden">Piepje bij een melding</span></label>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="secDisplay" aria-labelledby="hDisplay">
+        <header class="panel-head">
+          <svg class="i" aria-hidden="true"><use href="#i-hud"/></svg>
+          <h2 id="hDisplay">Weergave</h2>
+        </header>
+        <div class="panel-body">
+          <div class="setting" data-functie="weergave" hidden>
+            <div class="setting-text"><h3>Kaders in het camerabeeld</h3>
+              <p>Rechthoeken en namen rond objecten en gezichten. Geldt voor iedereen die meekijkt.</p></div>
+            <label class="switch"><input type="checkbox" role="switch" id="dKaders"><span class="track"></span>
+              <span class="visually-hidden">Kaders in het camerabeeld</span></label>
+          </div>
+          <div class="setting" data-functie="weergave" hidden>
+            <div class="setting-text"><h3>Tijd en zoomtekst in het camerabeeld</h3>
+              <p>De LIVE-regel met datum en tijd. Komt ook op foto's die je opslaat.</p></div>
+            <label class="switch"><input type="checkbox" role="switch" id="dTekst"><span class="track"></span>
+              <span class="visually-hidden">Tijd en zoomtekst in het camerabeeld</span></label>
+          </div>
+          <div class="setting">
+            <div class="setting-text"><h3>HUD-overlay in de browser</h3>
+              <p>Hoekjes, vizier en de regels met fps en tellingen over het beeld. Alleen in deze browser.</p></div>
+            <label class="switch"><input type="checkbox" role="switch" id="dOverlay"><span class="track"></span>
+              <span class="visually-hidden">HUD-overlay in de browser</span></label>
+          </div>
+          <p class="notice" id="displayUnavailable" hidden>Deze versie van de server kan de kaders en de tekst
+            in het camerabeeld nog niet aan- of uitzetten.</p>
+        </div>
+      </section>
+    </div>
+
+    <aside class="settings-side">
+      <section class="panel" id="secSystem" aria-labelledby="hSystem">
+        <header class="panel-head">
+          <svg class="i" aria-hidden="true"><use href="#i-cpu"/></svg>
+          <h2 id="hSystem">Systeem</h2>
+        </header>
+        <dl class="kv" id="sysList"></dl>
+      </section>
+    </aside>
+  </div>
+</main>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+<script src="{{ url_for('static', filename='spraak.js') }}"></script>
+<script src="{{ url_for('static', filename='instellingen.js') }}"></script>
+{% endblock %}

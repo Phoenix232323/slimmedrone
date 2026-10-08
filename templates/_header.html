@@ -1,21 +1,53 @@
+{# Bovenbalk van elke pagina (na inloggen) + de tabbalk onderaan voor telefoons. #}
+<a class="skip-link" href="#inhoud">Naar de inhoud</a>
 <header class="topbar">
-  <a class="brand" href="/">
+  <a class="brand" href="/" aria-label="SlimmeDrone grondstation">
     {% include "_logo.html" %}
-    <span>SlimmeDrone <small>grondstation</small></span>
+    <span class="brand-text"><b>SlimmeDrone</b><small>Grondstation</small></span>
   </a>
-  <nav class="tabs">
-    <a href="/" class="{{ 'active' if page == 'live' }}">Live</a>
-    <a href="/gezichten" class="{{ 'active' if page == 'gezichten' }}">Gezichten</a>
+
+  <nav class="nav" aria-label="Hoofdmenu">
+    <a href="/" {% if page == 'live' %}aria-current="page"{% endif %}>
+      <svg class="i" aria-hidden="true"><use href="#i-live"/></svg>Live</a>
+    <a href="/gezichten" {% if page == 'gezichten' %}aria-current="page"{% endif %}>
+      <svg class="i" aria-hidden="true"><use href="#i-face"/></svg>Gezichten</a>
+    {# Verborgen tot we weten dat de server deze pagina heeft (zie app.js). #}
+    <a href="/instellingen" data-functie="instellingen" {% if page == 'instellingen' %}aria-current="page"{% else %}hidden{% endif %}>
+      <svg class="i" aria-hidden="true"><use href="#i-sliders"/></svg>Instellingen</a>
   </nav>
-  {% if page == 'live' %}
-  <div class="pills">
-    <span class="pill" id="pillCamera"><i></i><b>Camera</b></span>
-    <span class="pill" id="pillFps"><b>0 fps</b></span>
-    <span class="pill" id="pillAi"><b>AI</b></span>
+
+  <div class="readouts">
+    <span class="readout" id="roCamera" title="Camera">
+      <i class="dot" aria-hidden="true"></i><span class="label">Cam</span><b>—</b>
+    </span>
+    <a class="readout" id="roAi" href="/instellingen" title="Slimme AI">
+      <span class="label">AI</span><b>—</b>
+    </a>
   </div>
-  {% endif %}
+
   <div class="account">
-    <span class="user-name">{{ user }}</span>
-    <form method="post" action="/logout"><button class="btn small ghost">Uitloggen</button></form>
+    <span class="user-name" title="Ingelogd als {{ user }}">{{ user }}</span>
+    <form method="post" action="/logout">
+      <button class="icon-btn" aria-label="Uitloggen" title="Uitloggen">
+        <svg class="i" aria-hidden="true"><use href="#i-logout"/></svg>
+      </button>
+    </form>
+    <button type="button" class="icon-btn" data-hulp aria-label="Sneltoetsen tonen" title="Sneltoetsen (?)">
+      <svg class="i" aria-hidden="true"><use href="#i-keyboard"/></svg>
+    </button>
   </div>
 </header>
+
+<nav class="tabbar" id="tabbar" aria-label="Snelmenu">
+  <a href="/#live" data-view="live" {% if page == 'live' %}aria-current="true"{% endif %}>
+    <svg class="i" aria-hidden="true"><use href="#i-live"/></svg><span>Live</span></a>
+  <a href="/#jarvis" data-view="jarvis">
+    <svg class="i" aria-hidden="true"><use href="#i-jarvis"/></svg><span>J.A.R.V.I.S.</span>
+    <b class="badge" id="badgeJarvis" hidden></b></a>
+  <a href="/#meldingen" data-view="meldingen">
+    <svg class="i" aria-hidden="true"><use href="#i-bell"/></svg><span>Meldingen</span>
+    <b class="badge" id="badgeMeldingen" hidden></b></a>
+  <a href="/#meer" data-view="meer" {% if page != 'live' %}aria-current="true"{% endif %}>
+    <svg class="i" aria-hidden="true"><use href="#i-more"/></svg><span>Meer</span></a>
+</nav>
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>

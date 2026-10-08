@@ -1,40 +1,67 @@
 {% extends "base.html" %}
 {% block title %}Gezichten - SlimmeDrone{% endblock %}
+{% block body_class %}page-faces{% endblock %}
 {% block body %}
 {% include "_header.html" %}
-<main class="faces-page">
-  <section class="card">
-    <h2>Gezicht toevoegen</h2>
-    <p class="hint">Voeg alleen gezichten toe van mensen die daar toestemming voor geven.
-      Meer foto's per persoon (verschillende hoeken en licht) maken de herkenning beter.</p>
+<main class="page faces-page" id="inhoud">
+  <div class="page-head">
+    <h1>Gezichten</h1>
+    <p>Wie J.A.R.V.I.S. en de meldingen bij naam kennen.</p>
+  </div>
 
-    <label class="field">Naam
-      <input id="faceName" placeholder="Bijv. Johan" maxlength="40">
-    </label>
+  <section class="panel" aria-labelledby="hAdd">
+    <header class="panel-head">
+      <svg class="i" aria-hidden="true"><use href="#i-face-plus"/></svg>
+      <h2 id="hAdd">Gezicht toevoegen</h2>
+    </header>
+    <div class="panel-body">
+      <p class="notice">
+        <svg class="i" aria-hidden="true"><use href="#i-info"/></svg>
+        <span>Voeg alleen gezichten toe van mensen die daar toestemming voor geven.
+        Meer foto's per persoon (verschillende hoeken en licht) maken de herkenning beter.</span>
+      </p>
 
-    <div class="add-options">
-      <div class="add-option">
-        <h3>Vanaf de live camera</h3>
-        <div class="mini-video"><img src="/video_feed" alt="Live camerabeeld"></div>
-        <button class="btn primary wide" id="captureBtn">Neem foto van het gezicht in beeld</button>
+      <label class="field name-field">
+        <span class="label">Naam</span>
+        <input id="faceName" placeholder="Bijv. Johan" maxlength="40" autocomplete="off">
+      </label>
+
+      <div class="add-options">
+        <div class="add-option">
+          <h3 class="label">Vanaf de live camera</h3>
+          <div class="mini-video">
+            <img src="/video_feed" alt="Live camerabeeld">
+            <i class="hud-corner tl"></i><i class="hud-corner tr"></i>
+            <i class="hud-corner bl"></i><i class="hud-corner br"></i>
+          </div>
+          <button class="btn wide" id="captureBtn">
+            <svg class="i" aria-hidden="true"><use href="#i-camera"/></svg>Neem foto van het gezicht in beeld</button>
+        </div>
+        <div class="add-option">
+          <h3 class="label">Foto's uploaden</h3>
+          <label class="dropzone" id="dropzone">
+            <input type="file" id="photoInput" accept="image/*" multiple>
+            <svg class="i" aria-hidden="true"><use href="#i-upload"/></svg>
+            <span><b>Kies foto's</b> of sleep ze hierheen</span>
+            <small id="photoCount">JPG of PNG, één persoon per foto</small>
+          </label>
+          <button class="btn wide" id="uploadBtn">
+            <svg class="i" aria-hidden="true"><use href="#i-upload"/></svg>Uploaden</button>
+        </div>
       </div>
-      <div class="add-option">
-        <h3>Foto's uploaden</h3>
-        <label class="dropzone" id="dropzone">
-          <input type="file" id="photoInput" accept="image/*" multiple>
-          <span><b>Kies foto's</b> of sleep ze hierheen</span>
-          <small id="photoCount">JPG of PNG, één persoon per foto</small>
-        </label>
-        <button class="btn primary wide" id="uploadBtn">Uploaden</button>
-      </div>
+      <div class="result" id="result" role="status" hidden></div>
     </div>
-    <div class="result" id="result" hidden></div>
   </section>
 
-  <section class="card">
-    <h2>Bekende personen <span class="count" id="peopleCount">0</span></h2>
-    <ul class="people" id="people"></ul>
-    <p class="empty" id="peopleEmpty">Nog niemand toegevoegd.</p>
+  <section class="panel" aria-labelledby="hPeople">
+    <header class="panel-head">
+      <svg class="i" aria-hidden="true"><use href="#i-face"/></svg>
+      <h2 id="hPeople">Bekende personen</h2><span class="count" id="peopleCount">0</span>
+    </header>
+    <div class="panel-body">
+      <ul class="people" id="people"></ul>
+      <p class="empty" id="peopleEmpty">Nog niemand toegevoegd.</p>
+    </div>
   </section>
 </main>
 <script src="{{ url_for('static', filename='app.js') }}"></script>
