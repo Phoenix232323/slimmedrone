@@ -37,6 +37,7 @@ import cv2
 import numpy as np
 
 from . import system
+from .camera import safe_source
 from .labels import LABELS, dutch, dutch_count, find_label
 from .zoom import crop, fit_rect
 
@@ -1358,16 +1359,6 @@ def _api_message(exc) -> str:
     body = getattr(exc, "body", None)
     error = body.get("error") if isinstance(body, dict) else None
     return str(error.get("message") or "") if isinstance(error, dict) else ""
-
-
-def safe_source(source) -> str:
-    """De camerabron zonder geheimen, zodat hij in de chat (en naar Claude) mag.
-
-    'http://pi:8000/stream.mjpg?token=abc' -> 'http://pi:8000/stream.mjpg'
-    'rtsp://naam:wachtwoord@camera/live'   -> 'rtsp://camera/live'
-    """
-    text = re.split(r"[?#]", str(source), maxsplit=1)[0]
-    return re.sub(r"://[^/@]*@", "://", text)
 
 
 def _display_name(user: str) -> str:

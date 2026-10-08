@@ -27,7 +27,7 @@ from dataclasses import dataclass, field, replace
 import cv2
 import numpy as np
 
-from .camera import FpsMeter
+from .camera import FpsMeter, safe_source
 from .zoom import Zoom, crop
 
 log = logging.getLogger(__name__)
@@ -370,6 +370,6 @@ def _draw_hud(img, zoom_status):
 def _placeholder(camera):
     img = np.full((540, 960, 3), (28, 20, 14), dtype=np.uint8)
     cv2.putText(img, "Geen camerabeeld", (300, 250), FONT, 1.2, (255, 200, 40), 2, cv2.LINE_AA)
-    detail = _ascii(f"Bron: {camera.source}  -  {camera.error or 'verbinden...'}")[:90]
+    detail = _ascii(f"Bron: {safe_source(camera.source)}  -  {camera.error or 'verbinden...'}")[:90]
     cv2.putText(img, detail, (40, 310), FONT, 0.55, (200, 200, 200), 1, cv2.LINE_AA)
     return img

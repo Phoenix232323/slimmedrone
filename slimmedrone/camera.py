@@ -18,6 +18,7 @@ CAMERA_FPS (standaard 30) is hoeveel beelden per seconde we aan de camera vragen
 """
 import logging
 import os
+import re
 import threading
 import time
 
@@ -26,6 +27,17 @@ import cv2
 log = logging.getLogger(__name__)
 
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
+
+
+
+def safe_source(source) -> str:
+    """De camerabron zonder geheimen, zodat hij in logs, het beeld en de chat mag.
+
+    'http://pi:8000/stream.mjpg?token=abc' -> 'http://pi:8000/stream.mjpg'
+    'rtsp://naam:wachtwoord@camera/live'   -> 'rtsp://camera/live'
+    """
+    text = re.split(r"[?#]", str(source), maxsplit=1)[0]
+    return re.sub(r"://[^/@]*@", "://", text)
 
 
 class FpsMeter:
@@ -127,7 +139,7 @@ class Camera:
                     if not self._running:
                         break
                     if not self.connected:
-                        log.info("Camera verbonden: %s", self.source)
+                        log.info("Camera verbonden: %s", safe_source(self.source))
                     self.connected = True
                     self.error = ""
                     with self._cond:
@@ -140,7 +152,7 @@ class Camera:
                     raise RuntimeError("camera gaf geen beelden meer")
             except Exception as exc:  # camera los, stream weg, enz.
                 if self.connected or self.error != str(exc):
-                    log.warning("Camera %s: %s (opnieuw proberen...)", self.source, exc)
+                    log.warning("Camera %s: %s (opnieuw proberen...)", safe_source(self.source), exc)
                 self.connected = False
                 self.error = str(exc)
                 time.sleep(2)
