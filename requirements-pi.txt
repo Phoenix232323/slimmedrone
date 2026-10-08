@@ -5,6 +5,9 @@
 # numpy 2, wat niet samengaat met picamera2 op Raspberry Pi OS Bookworm.
 # OpenCV 4.10/4.11 werkt met numpy 1 én 2. "headless" = zonder venster-
 # bibliotheken, die we op de Pi niet nodig hebben.
+#
+# De Raspberry Pi AI Camera (IMX500) heeft geen extra pip-pakketten nodig, wel het
+# apt-pakket imx500-all (firmware + modellen). install-pi.sh installeert dat vanzelf.
 flask>=3.0
 opencv-python-headless>=4.10,<4.12
 python-dotenv>=1.0

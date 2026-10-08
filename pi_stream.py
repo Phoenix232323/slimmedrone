@@ -25,11 +25,12 @@ from slimmedrone.config import ROOT
 load_dotenv(ROOT / ".env")
 PORT = int(os.getenv("STREAM_PORT", "8000"))
 TOKEN = os.getenv("STREAM_TOKEN", "")
-FPS = int(os.getenv("STREAM_FPS", "20"))
+FPS = int(os.getenv("STREAM_FPS", "30"))
 QUALITY = int(os.getenv("JPEG_QUALITY", "80"))
 
 camera = Camera(os.getenv("CAMERA_SOURCE", "picamera"),
-                int(os.getenv("CAMERA_WIDTH", "1280")), int(os.getenv("CAMERA_HEIGHT", "720")))
+                int(os.getenv("CAMERA_WIDTH", "1280")), int(os.getenv("CAMERA_HEIGHT", "720")),
+                int(os.getenv("CAMERA_FPS", "30")))
 
 
 class StreamHandler(BaseHTTPRequestHandler):
@@ -46,11 +47,13 @@ class StreamHandler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         last_id = -1
+        next_time = time.monotonic()
         try:
             while True:
-                frame_id, frame = camera.read()
+                # Wacht op een nieuw beeld (de camera geeft een seintje).
+                frame_id, frame, _ = camera.wait_frame(last_id, timeout=1.0)
                 if frame is None or frame_id == last_id:
-                    time.sleep(0.01)
+                    last_id = frame_id  # (nog) geen beeld: de volgende keer echt wachten
                     continue
                 last_id = frame_id
                 ok, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, QUALITY])
@@ -58,7 +61,11 @@ class StreamHandler(BaseHTTPRequestHandler):
                     continue
                 self.wfile.write(b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "
                                  + str(len(jpeg)).encode() + b"\r\n\r\n" + jpeg.tobytes() + b"\r\n")
-                time.sleep(1 / FPS)
+                # Niet vaker dan STREAM_FPS beelden per seconde (vast schema, dus geen gehaper).
+                next_time = max(next_time + 1 / FPS, time.monotonic() - 0.5 / FPS)
+                rest = next_time - time.monotonic() - 0.25 / FPS
+                if rest > 0:
+                    time.sleep(rest)
         except (BrokenPipeError, ConnectionResetError):
             pass  # kijker heeft de verbinding gesloten
 
