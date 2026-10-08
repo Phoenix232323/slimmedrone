@@ -1,82 +1,245 @@
 {% extends "base.html" %}
 {% block title %}Live - SlimmeDrone{% endblock %}
+{% block body_class %}page-live{% endblock %}
 {% block body %}
 {% include "_header.html" %}
-<main class="dash">
-  <section class="dash-main">
-    <div class="card video-card">
+{# data-in zegt bij welk tabblad (telefoon) een onderdeel hoort: live, jarvis, meldingen of meer. #}
+<main class="dash" id="inhoud" data-view="live" data-ai="{{ ai_mode }}">
+  <div class="dash-main">
+
+    <section class="panel video-panel" data-in="live" aria-label="Live camerabeeld">
       <div class="video-wrap" id="videoWrap">
-        <img id="video" src="/video_feed" alt="Live camerabeeld van de drone">
-        <span class="video-hint">Klik in het beeld om in te zoomen</span>
+        <img id="video" src="/video_feed" alt="Live camerabeeld van de drone. Klik in het beeld om daar in te zoomen.">
+        {# De HUD ligt over het beeld, maar laat klikken door (pointer-events: none). #}
+        <div class="hud" id="hud" aria-hidden="true">
+          <i class="hud-corner tl"></i><i class="hud-corner tr"></i>
+          <i class="hud-corner bl"></i><i class="hud-corner br"></i>
+          <svg class="hud-reticle" viewBox="0 0 80 80">
+            <circle cx="40" cy="40" r="20" stroke-dasharray="23.4 8"/>
+            <path d="M40 6v16M40 58v16M6 40h16M58 40h16"/>
+            <circle class="hud-dot" cx="40" cy="40" r="1.6"/>
+          </svg>
+          <div class="hud-strip hud-top">
+            <span class="hud-live" id="hudLive"><i></i><b>LIVE</b></span>
+            <span class="hud-clock-wide" id="hudClock">--:--:--</span>
+            <span><b id="hudFps">--</b> FPS</span>
+            <span>ZOOM <b id="hudZoom">1.0×</b></span>
+          </div>
+          <div class="hud-strip hud-bottom">
+            <span>OBJ <b id="hudObj">0</b></span>
+            <span>GEZ <b id="hudFaces">0</b></span>
+            <span class="hud-bad">ONB <b id="hudUnknown">0</b></span>
+          </div>
+        </div>
+        <p class="video-hint" aria-hidden="true">Klik om in te zoomen</p>
       </div>
-      <div class="video-bar">
-        <span class="zoom-state" id="zoomState">Volledig beeld</span>
-        <div class="video-tools">
-          <button class="btn small" id="zoomOut" disabled>Zoom uit</button>
-          <a class="btn small" href="/api/snapshot">Foto opslaan</a>
-          <button class="btn small" id="fullscreen">Volledig scherm</button>
+
+      <div class="toolbar" role="toolbar" aria-label="Camerabediening">
+        <span class="zoom-state" id="zoomState" aria-live="polite">Volledig beeld</span>
+        <div class="tool-group">
+          <button class="tool" id="zoomOut" aria-label="Zoom uit (z)" title="Zoom uit (z)" disabled>
+            <svg class="i" aria-hidden="true"><use href="#i-zoom-out"/></svg></button>
+          <button class="tool" id="zoomIn" aria-label="Zoom in op het midden" title="Zoom in op het midden">
+            <svg class="i" aria-hidden="true"><use href="#i-zoom-in"/></svg></button>
+        </div>
+        <div class="tool-group">
+          <a class="tool" id="snapshotBtn" href="/api/snapshot" download aria-label="Foto opslaan (s)" title="Foto opslaan (s)">
+            <svg class="i" aria-hidden="true"><use href="#i-camera"/></svg></a>
+          <button class="tool" id="fullscreenBtn" aria-label="Volledig scherm (f)" title="Volledig scherm (f)">
+            <svg class="i" aria-hidden="true"><use href="#i-expand"/></svg></button>
+        </div>
+        <div class="tool-group">
+          <button class="tool toggle" id="toggleKaders" data-functie="weergave" hidden aria-pressed="true"
+                  aria-label="Kaders in het camerabeeld" title="Kaders in het camerabeeld">
+            <svg class="i" aria-hidden="true"><use href="#i-boxes"/></svg></button>
+          <button class="tool toggle" id="toggleTekst" data-functie="weergave" hidden aria-pressed="true"
+                  aria-label="Tijd en zoomtekst in het camerabeeld" title="Tijd en zoomtekst in het camerabeeld">
+            <svg class="i" aria-hidden="true"><use href="#i-text"/></svg></button>
+          <button class="tool toggle" id="toggleOverlay" aria-pressed="true"
+                  aria-label="HUD-overlay in de browser" title="HUD-overlay in de browser">
+            <svg class="i" aria-hidden="true"><use href="#i-hud"/></svg></button>
         </div>
       </div>
-    </div>
+    </section>
 
-    <div class="info-grid">
-      <div class="card">
-        <h2>Gedetecteerd <span class="count" id="objectCount">0</span></h2>
-        <ul class="chips" id="objects"></ul>
-        <p class="empty" id="objectsEmpty">Nog niets in beeld.</p>
-        <p class="hint" id="detectorInfo"></p>
+    <section class="panel telemetry" id="telemetry" data-in="live" aria-label="Telemetrie">
+      <div class="tele tele-wide" data-tele="beeld" title="Beelden per seconde naar deze website">
+        <span class="label">Beeld</span>
+        <span class="value"><b id="tBeeld">--</b><small>fps</small></span>
+        <canvas id="fpsChart" aria-hidden="true"></canvas>
       </div>
-      <div class="card">
-        <h2>Gezichten <span class="count" id="faceCount">0</span></h2>
+      <div class="tele" data-tele="camera" hidden title="Beelden per seconde uit de camera">
+        <span class="label">Camera</span>
+        <span class="value"><b id="tCamera">--</b><small>fps</small></span>
+      </div>
+      <div class="tele" data-tele="objecten" hidden title="Objectherkenningen per seconde">
+        <span class="label">Objecten</span>
+        <span class="value"><b id="tObjecten">--</b><small>/s</small></span>
+      </div>
+      <div class="tele" data-tele="temp" hidden title="Temperatuur van de processor">
+        <span class="label">CPU-temp</span>
+        <span class="value"><b id="tTemp">--</b><small>°C</small></span>
+        <span class="meter"><i id="mTemp"></i></span>
+      </div>
+      <div class="tele" data-tele="cpu" hidden title="Hoe druk de processor het heeft">
+        <span class="label">CPU</span>
+        <span class="value"><b id="tCpu">--</b><small>%</small></span>
+        <span class="meter"><i id="mCpu"></i></span>
+      </div>
+      <div class="tele" data-tele="geheugen" hidden title="Gebruikt werkgeheugen">
+        <span class="label">Geheugen</span>
+        <span class="value"><b id="tMem">--</b><small>%</small></span>
+        <span class="meter"><i id="mMem"></i></span>
+      </div>
+    </section>
+
+    <div class="panels">
+      <section class="panel" id="panelObjects" data-in="live" aria-labelledby="hObjects">
+        <header class="panel-head">
+          <svg class="i" aria-hidden="true"><use href="#i-boxes"/></svg>
+          <h2 id="hObjects">Objecten</h2><span class="count" id="objectCount">0</span>
+        </header>
+        <ul class="obj-list" id="objects"></ul>
+        <p class="empty" id="objectsEmpty">Nog niets in beeld.</p>
+        <p class="panel-foot" id="detectorInfo"></p>
+      </section>
+
+      <section class="panel" id="panelFaces" data-in="live" aria-labelledby="hFaces">
+        <header class="panel-head">
+          <svg class="i" aria-hidden="true"><use href="#i-face"/></svg>
+          <h2 id="hFaces">Gezichten</h2><span class="count" id="faceCount">0</span>
+        </header>
         <ul class="face-list" id="faces"></ul>
         <p class="empty" id="facesEmpty">Geen gezichten in beeld.</p>
-      </div>
-      <div class="card alerts-card">
-        <h2>Meldingen</h2>
-        <ul class="alerts" id="alerts"></ul>
+      </section>
+
+      <section class="panel" id="panelAlerts" data-in="meldingen" aria-labelledby="hAlerts">
+        <header class="panel-head">
+          <svg class="i" aria-hidden="true"><use href="#i-bell"/></svg>
+          <h2 id="hAlerts">Meldingen</h2><span class="count" id="alertCount">0</span>
+        </header>
+        <div class="seg" id="alertFilter" role="group" aria-label="Meldingen filteren">
+          <button type="button" data-filter="alle" aria-pressed="true">Alle</button>
+          <button type="button" data-filter="bekend" aria-pressed="false">Bekend</button>
+          <button type="button" data-filter="onbekend" aria-pressed="false">Onbekend</button>
+          <button type="button" data-filter="wacht" aria-pressed="false">Wacht</button>
+        </div>
+        <ol class="timeline" id="alerts"></ol>
         <p class="empty" id="alertsEmpty">Nog geen meldingen.</p>
+      </section>
+
+      <section class="panel" id="panelActivity" data-in="meldingen" data-functie="activiteit" hidden aria-labelledby="hActivity">
+        <header class="panel-head">
+          <svg class="i" aria-hidden="true"><use href="#i-activity"/></svg>
+          <h2 id="hActivity">Activiteit</h2>
+        </header>
+        <ol class="feed" id="activity"></ol>
+        <p class="empty" id="activityEmpty">Nog niets verschenen of verdwenen.</p>
+      </section>
+
+      <section class="panel" id="panelWatchers" data-in="meer" data-functie="activiteit" hidden aria-labelledby="hWatchers">
+        <header class="panel-head">
+          <svg class="i" aria-hidden="true"><use href="#i-eye"/></svg>
+          <h2 id="hWatchers">Wachters</h2><span class="count" id="watcherCount">0</span>
+        </header>
+        <ul class="watchers" id="watchers"></ul>
+        <p class="empty" id="watchersEmpty">Geen actieve wachters. Vraag J.A.R.V.I.S. bijvoorbeeld:
+          <q>Waarschuw me als er een hond komt.</q></p>
+      </section>
+    </div>
+
+    {# Alleen op de telefoon: het tabblad "Meer". #}
+    <section class="panel meer" data-in="meer" aria-label="Meer">
+      <header class="panel-head">
+        <svg class="i" aria-hidden="true"><use href="#i-more"/></svg>
+        <h2>Meer</h2><span class="count">{{ user }}</span>
+      </header>
+      <nav class="meer-links" aria-label="Meer pagina's">
+        <a href="/gezichten"><svg class="i" aria-hidden="true"><use href="#i-face"/></svg>Gezichten beheren
+          <svg class="i end" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+        <a href="/instellingen" data-functie="instellingen" hidden><svg class="i" aria-hidden="true"><use href="#i-sliders"/></svg>Instellingen
+          <svg class="i end" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+        <form method="post" action="/logout">
+          <button><svg class="i" aria-hidden="true"><use href="#i-logout"/></svg>Uitloggen</button>
+        </form>
+      </nav>
+    </section>
+  </div>
+
+  <aside class="panel jarvis-panel" id="jarvis" data-in="jarvis" aria-labelledby="jarvisTitle">
+    <header class="jarvis-head">
+      <div class="orb" id="orb" data-state="idle" aria-hidden="true">
+        <svg viewBox="0 0 64 64">
+          <defs>
+            <radialGradient id="orbCore"><stop offset="0" stop-color="#f2feff"/><stop offset=".5" stop-color="#8ef0fb"/><stop offset="1" stop-color="#22d3ee" stop-opacity="0"/></radialGradient>
+            <radialGradient id="orbGlow"><stop offset=".35" stop-color="#22d3ee" stop-opacity=".28"/><stop offset="1" stop-color="#22d3ee" stop-opacity="0"/></radialGradient>
+          </defs>
+          <circle class="orb-glow" cx="32" cy="32" r="31" fill="url(#orbGlow)"/>
+          <g class="orb-ring orb-ring-a"><circle cx="32" cy="32" r="28" stroke-dasharray="15 4 1 2"/></g>
+          <g class="orb-ring orb-ring-b"><circle cx="32" cy="32" r="22.5" stroke-dasharray="1 2.534"/></g>
+          <g class="orb-coils"><circle cx="32" cy="32" r="15.5" stroke-dasharray="7 2.739"/></g>
+          <circle class="orb-core" cx="32" cy="32" r="10" fill="url(#orbCore)"/>
+        </svg>
       </div>
-    </div>
-  </section>
-
-  <aside class="card chat">
-    <div class="chat-head">
-      <div class="orb" aria-hidden="true"></div>
-      <div class="chat-title">
-        <h2>J.A.R.V.I.S.</h2>
-        <small id="aiMode">{{ 'Claude kijkt mee' if ai_mode == 'claude' else 'Lokale modus (zonder Claude)' }}</small>
+      <div class="jarvis-title">
+        <h2 id="jarvisTitle">J.A.R.V.I.S.</h2>
+        <p class="mode" id="aiMode">{{ 'Claude' if ai_mode == 'claude' else 'Lokale modus' }}</p>
       </div>
-      <button class="icon-btn" id="speakToggle" title="Antwoorden voorlezen" aria-pressed="false">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path class="wave" d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>
-      </button>
-      <button class="icon-btn" id="chatReset" title="Nieuw gesprek">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
-      </button>
+      <button type="button" class="icon-btn" id="wakeToggle" aria-pressed="false"
+              aria-label="Luisteren naar het wekwoord Jarvis" title="Luisteren naar &quot;Jarvis, ...&quot;">
+        <svg class="i" aria-hidden="true"><use href="#i-wake"/></svg></button>
+      <button type="button" class="icon-btn" id="speakToggle" aria-pressed="false"
+              aria-label="Antwoorden voorlezen" title="Antwoorden voorlezen">
+        <svg class="i" aria-hidden="true"><use href="#i-speaker"/></svg></button>
+      <button type="button" class="icon-btn" id="voiceMenuBtn" aria-expanded="false" aria-controls="voiceMenu"
+              aria-label="Spraakinstellingen" title="Spraakinstellingen">
+        <svg class="i" aria-hidden="true"><use href="#i-sliders"/></svg></button>
+      <button type="button" class="icon-btn" id="chatReset" aria-label="Nieuw gesprek" title="Nieuw gesprek">
+        <svg class="i" aria-hidden="true"><use href="#i-reset"/></svg></button>
+    </header>
+
+    <div class="voice-menu" id="voiceMenu" hidden>
+      <p class="label">Spraak (alleen in deze browser)</p>
+      <label class="switch"><input type="checkbox" role="switch" id="vmSpeak"><span class="track"></span>Antwoorden voorlezen</label>
+      <label class="field"><span class="label">Stem</span><select id="vmVoice"></select></label>
+      <label class="field"><span class="label">Tempo <output id="vmRateOut">1.0×</output></span>
+        <input type="range" id="vmRate" min="0.7" max="1.5" step="0.1" value="1"></label>
+      <label class="switch"><input type="checkbox" role="switch" id="vmWake"><span class="track"></span>Luisteren naar &quot;Jarvis, ...&quot;</label>
+      <label class="switch"><input type="checkbox" role="switch" id="vmAlerts"><span class="track"></span>Nieuwe meldingen uitspreken</label>
+      <label class="switch"><input type="checkbox" role="switch" id="vmBeep"><span class="track"></span>Piepje bij een melding</label>
+      <p class="hint" id="vmMicInfo" hidden></p>
     </div>
 
-    <div class="messages" id="messages" aria-live="polite">
-      <div class="msg jarvis">
-        <p>Goedendag. Ik kijk mee via de dronecamera. Vraag me wat ik zie, of laat me ergens op inzoomen.</p>
+    <div class="cta" id="aiCta" hidden>
+      <svg class="i" aria-hidden="true"><use href="#i-key"/></svg>
+      <div>
+        <p>J.A.R.V.I.S. begrijpt nu alleen vaste zinnen. Met een Claude-sleutel wordt hij net zo slim als ChatGPT of Copilot.</p>
+        <a class="cta-link" href="/instellingen" id="ctaLink" hidden>Claude-sleutel instellen
+          <svg class="i" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+        <p class="hint" id="ctaEnv" hidden>Zet <code>ANTHROPIC_API_KEY</code> in het bestand <code>.env</code> en start de app opnieuw.</p>
       </div>
+      <button type="button" class="icon-btn small" id="ctaClose" aria-label="Melding verbergen" title="Verbergen">
+        <svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
     </div>
 
-    <div class="suggestions" id="suggestions">
-      <button>Wat zie je?</button>
-      <button>Wie is er in beeld?</button>
-      <button>Zoom in op de persoon</button>
-      <button>Zoom uit</button>
-    </div>
+    <div class="messages" id="messages" role="log" aria-live="polite" aria-label="Gesprek met J.A.R.V.I.S."></div>
 
-    <form class="chat-input" id="chatForm" autocomplete="off">
-      <button type="button" class="icon-btn" id="micBtn" title="Inspreken" hidden>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
-      </button>
-      <input id="chatInput" placeholder="Vraag iets, bijv. 'zoom in op de tafel'" maxlength="1000">
-      <button class="btn primary" id="sendBtn">Stuur</button>
+    <div class="suggestions" id="suggestions" aria-label="Voorbeeldvragen"></div>
+
+    <form class="composer" id="chatForm" autocomplete="off">
+      <button type="button" class="icon-btn mic" id="micBtn" aria-label="Inspreken (m)" title="Inspreken (m)">
+        <svg class="i" aria-hidden="true"><use href="#i-mic"/></svg></button>
+      <textarea id="chatInput" rows="1" maxlength="1000" placeholder="Vraag iets aan J.A.R.V.I.S."
+                aria-label="Vraag aan J.A.R.V.I.S." enterkeyhint="send"></textarea>
+      <button class="send" id="sendBtn" aria-label="Versturen" title="Versturen (Enter)">
+        <svg class="i" aria-hidden="true"><use href="#i-send"/></svg></button>
     </form>
+    <p class="composer-note" id="micNote" role="status" hidden></p>
   </aside>
 </main>
-<div class="toasts" id="toasts" aria-live="polite"></div>
 <script src="{{ url_for('static', filename='app.js') }}"></script>
+<script src="{{ url_for('static', filename='opmaak.js') }}"></script>
+<script src="{{ url_for('static', filename='spraak.js') }}"></script>
 <script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+<script src="{{ url_for('static', filename='jarvis.js') }}"></script>
 {% endblock %}
