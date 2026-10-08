@@ -76,6 +76,25 @@ function bewaar(key, value) {
 // Onderdelen van de pagina sturen elkaar "seintjes", bijv. als er een nieuwe status is.
 const seintjes = new EventTarget();
 
+// Is iemand nu met een lijst knoppen bezig? Dan verversen we die lijst even niet,
+// anders verdwijnt de knop net onder je klik. Dat is zo als de muis erboven hangt,
+// of als je er met het toetsenbord (Tab) op staat. Na een muisklik of tik houdt een knop
+// ook "focus", maar dan is :focus-visible niet waar en mag de lijst gewoon verversen.
+// Op een telefoon blijft :hover na een tik "plakken"; daarom tellen we :hover alleen
+// mee bij een echte muis.
+const echteMuis = window.matchMedia("(hover: hover)");
+
+function inGebruik(box) {
+  if (echteMuis.matches && box.matches(":hover")) return true;
+  const focus = document.activeElement;
+  if (!focus || !box.contains(focus)) return false;
+  try {
+    return focus.matches(":focus-visible");
+  } catch {
+    return false;  // heel oude browser zonder :focus-visible
+  }
+}
+
 // -- livestream -----------------------------------------------------------
 
 // De livestream (MJPEG) opnieuw starten als de verbinding wegvalt.

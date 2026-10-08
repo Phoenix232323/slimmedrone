@@ -110,4 +110,5 @@ $("#uploadBtn").addEventListener("click", async () => {
 
 loadPeople();
 // Eén keer de status ophalen: voor de bovenbalk en om te zien of de server een instellingenpagina heeft.
-api("/api/status").then(leesStatus).catch(() => {});
+// (Met een heel hoge "na" stuurt de server geen meldingen met fotootjes mee.)
+api("/api/status?na=999999999").then(leesStatus).catch(() => {});

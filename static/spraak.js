@@ -179,6 +179,7 @@ const luisteraar = {
     if (!kanLuisteren) return this.bij.fout(microfoonUitleg());
     if (this.modus === "knop") return this.rec.stop();
     if (this.rec) this.rec.abort();  // het wekwoord even onderbreken
+    stilte();  // J.A.R.V.I.S. houdt op met voorlezen: jij wilt iets zeggen
     this.start("knop");
   },
 
@@ -199,7 +200,9 @@ const luisteraar = {
     this.bij.toestand(modus);
 
     rec.onresult = (event) => {
-      if (spreektNu()) return;  // niet naar onze eigen stem luisteren
+      // Bij het wekwoord niet naar onze eigen stem luisteren. (Met de knop wil je zelf
+      // iets zeggen; het voorlezen is dan al gestopt.)
+      if (modus === "wekwoord" && spreektNu()) return;
       let tekst = "", af = false;
       for (let i = event.resultIndex; i < event.results.length; i++) {
         tekst += event.results[i][0].transcript;

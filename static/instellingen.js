@@ -180,7 +180,9 @@ function getal(v, eenheid, decimalen = 1) {
 
 async function laadSysteem() {
   try {
-    const s = await api("/api/status");
+    // De meldingen (elk met een fotootje) gebruiken we hier niet. Met een heel hoge
+    // "na" stuurt de server er geen mee; dat scheelt de Pi en de wifi veel werk.
+    const s = await api("/api/status?na=999999999");
     leesStatus(s);
     const p = s.prestaties || {}, sys = s.systeem || {}, ai = s.ai_info || {};
     $("#sysList").replaceChildren(

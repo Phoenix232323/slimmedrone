@@ -180,10 +180,10 @@ function drawSparkline(canvas, values) {
 // -- objecten en gezichten ---------------------------------------------------------
 
 function renderObjects(s) {
-  // Klik op een object om in te zoomen. Niet verversen terwijl de muis erboven
-  // hangt, anders verdwijnt de knop net onder je klik.
+  // Klik op een object om in te zoomen. Niet verversen terwijl je de lijst gebruikt
+  // (muis erboven of toetsenbord erop), anders verdwijnt de knop net onder je klik.
   const list = $("#objects");
-  if (!list.matches(":hover") && !list.contains(document.activeElement)) {
+  if (!inGebruik(list)) {
     list.replaceChildren(...s.objecten.map((o) => el("li", {},
       el("button", {
         type: "button",

@@ -51,8 +51,10 @@ function kop(wie, tijd) {
 
 function gebruikerBericht(tekst, tijd = Date.now() / 1000) {
   messages.querySelector(".idle")?.remove();
-  messages.append(el("div", { class: "msg user" }, kop("Jij", tijd), el("div", { class: "msg-body" }, tekst)));
+  const node = el("div", { class: "msg user" }, kop("Jij", tijd), el("div", { class: "msg-body" }, tekst));
+  messages.append(node);
   scrollNaarBeneden(true);
+  return node;
 }
 
 // Een (oud of kort) antwoord in één keer tonen. Soort "busy-note" = "even geduld"-melding,
@@ -109,6 +111,7 @@ function nieuwAntwoord() {
   const zinnen = new Zinnen();
   let tekst = "";
   let acties = [];
+  const bronLinks = [];    // alle bronnen van dit antwoord ({titel, url})
   let gestreamd = false;   // kwam er tekst via de stroom binnen?
   let tekenGepland = false;
   let af = false;
@@ -181,10 +184,15 @@ function nieuwAntwoord() {
       }
     },
 
+    // Bij elke zoekactie (of opgehaalde pagina) komen er nieuwe bronnen bij. We voegen ze
+    // toe aan de bronnen die er al staan (dubbele links maar één keer), tot 8 in totaal.
     bronnen(lijst) {
-      const links = lijst.filter((b) => /^https?:\/\//i.test(b.url || "")).slice(0, 8);
-      if (!links.length) return;
-      bronnen.replaceChildren(el("span", { class: "label" }, "Bronnen"), el("ul", {}, ...links.map((b) => {
+      for (const b of lijst) {
+        if (bronLinks.length >= 8) break;
+        if (/^https?:\/\//i.test(b.url || "") && !bronLinks.some((x) => x.url === b.url)) bronLinks.push(b);
+      }
+      if (!bronLinks.length) return;
+      bronnen.replaceChildren(el("span", { class: "label" }, "Bronnen"), el("ul", {}, ...bronLinks.map((b) => {
         let host = "";
         try { host = new URL(b.url).hostname.replace(/^www\./, ""); } catch {}
         return el("li", {}, el("a", { href: b.url, target: "_blank", rel: "noopener noreferrer" },
@@ -220,6 +228,12 @@ function nieuwAntwoord() {
       stilte();
       afronden(voetregel(tekst, acties, null, el("span", { class: "source-tag" }, reden)));
     },
+
+    // De vraag is niet verstuurd (J.A.R.V.I.S. was nog bezig): het antwoordvak weer weghalen.
+    weg() {
+      af = true;
+      node.remove();
+    },
   };
 }
 
@@ -236,15 +250,24 @@ async function leesStroom(response, bijGebeurtenis) {
   for (;;) {
     const { value, done } = await reader.read();
     if (done) break;
-    buffer += decoder.decode(value, { stream: true }).replace(/\r\n?/g, "\n");
+    buffer += decoder.decode(value, { stream: true });
+    // Regeleinden gelijkmaken: "\r\n" en "\r" worden "\n". Eindigt het stukje op "\r",
+    // dan bewaren we die nog even: de "\n" die erbij hoort kan in het volgende stukje zitten.
+    let cr = "";
+    if (buffer.endsWith("\r")) {
+      cr = "\r";
+      buffer = buffer.slice(0, -1);
+    }
+    buffer = buffer.replace(/\r\n?/g, "\n") + cr;
     let einde;
     while ((einde = buffer.indexOf("\n\n")) >= 0) {
       verwerkBlok(buffer.slice(0, einde), bijGebeurtenis);
       buffer = buffer.slice(einde + 2);
     }
   }
-  buffer += decoder.decode();
-  if (buffer.trim()) verwerkBlok(buffer, bijGebeurtenis);
+  // Wat er aan het eind nog over is (bijv. een laatste blok zonder lege regel erachter).
+  buffer = (buffer + decoder.decode()).replace(/\r\n?/g, "\n");
+  for (const blok of buffer.split("\n\n")) if (blok.trim()) verwerkBlok(blok, bijGebeurtenis);
 }
 
 function verwerkBlok(blok, bijGebeurtenis) {
@@ -271,11 +294,15 @@ function verwerkBlok(blok, bijGebeurtenis) {
 
 const BEZIG_TEKST = "J.A.R.V.I.S. is nog bezig met je vorige vraag. Even geduld en probeer het zo nog eens.";
 
+// Na de stopknop maakt de server het vorige antwoord nog af. Een nieuwe vraag krijgt dan
+// "nog bezig" (HTTP 409). Dan wachten we even en proberen het opnieuw, hoogstens zo vaak.
+const WACHT_POGINGEN = 15;  // 15 keer 2 seconden = een halve minuut
+
 async function vraag(tekst) {
   tekst = tekst.trim();
   if (!tekst) return;
   if (bezig) {
-    toast("J.A.R.V.I.S. is nog bezig. Druk op stop als je iets anders wilt vragen.");
+    toast("J.A.R.V.I.S. is nog bezig met een antwoord. Wacht even tot hij klaar is.");
     return;
   }
   gesprekGestart = true;
@@ -283,32 +310,23 @@ async function vraag(tekst) {
   zetBezig(true);
   input.value = "";
   groei();
-  gebruikerBericht(tekst);
+  const vraagNode = gebruikerBericht(tekst);
   const antwoord = nieuwAntwoord();
   stopper = new AbortController();
   try {
-    let response = null;
-    if (functies.stream !== false) {
-      response = await fetch("/api/chat/stream", {
-        method: "POST",
-        headers: { ...API_HEADERS, "Content-Type": "application/json", Accept: "text/event-stream" },
-        body: JSON.stringify({ bericht: tekst }),
-        signal: stopper.signal,
-      });
-      if (response.status === 404 || response.status === 405) {
-        functies.stream = false;  // oudere server: dan maar het hele antwoord in één keer
-        response = null;
+    for (let poging = 1; ; poging++) {
+      try {
+        await stuurVraag(tekst, antwoord);
+        break;
+      } catch (err) {
+        if (err.status !== 409 || poging >= WACHT_POGINGEN) throw err;
+        antwoord.gebeurtenis("status", { tekst: "Even wachten: J.A.R.V.I.S. maakt eerst zijn vorige antwoord af..." });
+        await wacht(2000, stopper.signal);
       }
-    }
-    if (response) {
-      await verwerkAntwoord(response, antwoord, tekst);
-    } else {
-      const r = await api("/api/chat", { method: "POST", json: { bericht: tekst }, signal: stopper.signal });
-      antwoord.klaar(r);
     }
   } catch (err) {
     if (err.name === "AbortError") antwoord.onderbroken("gestopt");
-    else if (err.status === 409) bezigMelding(antwoord, err.message, tekst);
+    else if (err.status === 409) bezigMelding(antwoord, vraagNode, err.message, tekst);
     else antwoord.fout(`Er ging iets mis: ${err.message}`);
   } finally {
     zetBezig(false);
@@ -316,7 +334,31 @@ async function vraag(tekst) {
   }
 }
 
-async function verwerkAntwoord(response, antwoord, tekst) {
+// De vraag één keer naar de server sturen (met streaming als de server dat kan).
+// Bij "nog bezig" (409) komt er een fout met err.status = 409.
+async function stuurVraag(tekst, antwoord) {
+  let response = null;
+  if (functies.stream !== false) {
+    response = await fetch("/api/chat/stream", {
+      method: "POST",
+      headers: { ...API_HEADERS, "Content-Type": "application/json", Accept: "text/event-stream" },
+      body: JSON.stringify({ bericht: tekst }),
+      signal: stopper.signal,
+    });
+    if (response.status === 404 || response.status === 405) {
+      functies.stream = false;  // oudere server: dan maar het hele antwoord in één keer
+      response = null;
+    }
+  }
+  if (response) {
+    await verwerkAntwoord(response, antwoord);
+  } else {
+    const r = await api("/api/chat", { method: "POST", json: { bericht: tekst }, signal: stopper.signal });
+    antwoord.klaar(r);
+  }
+}
+
+async function verwerkAntwoord(response, antwoord) {
   if (response.status === 401) {
     location.href = "/login";
     return;
@@ -324,7 +366,11 @@ async function verwerkAntwoord(response, antwoord, tekst) {
   const soort = response.headers.get("Content-Type") || "";
   if (!response.ok || !soort.includes("text/event-stream")) {
     const data = await response.json().catch(() => ({}));
-    if (response.status === 409) return bezigMelding(antwoord, data.fout, tekst);
+    if (response.status === 409) {
+      const err = new Error(data.fout || BEZIG_TEKST);
+      err.status = 409;
+      throw err;
+    }
     if (response.ok && data.antwoord) return antwoord.klaar(data);
     return antwoord.fout(data.fout || `Er ging iets mis (fout ${response.status}).`);
   }
@@ -332,11 +378,23 @@ async function verwerkAntwoord(response, antwoord, tekst) {
   if (!antwoord.afgerond) antwoord.onderbroken("verbinding verbroken");
 }
 
-// J.A.R.V.I.S. was nog met een vorige vraag bezig (HTTP 409): vriendelijk melden
-// en de vraag terugzetten, zodat je hem zo opnieuw kunt sturen.
-function bezigMelding(antwoord, bericht, tekst) {
-  antwoord.onderbroken("niet verstuurd");
-  messages.lastChild.remove();
+// Even wachten; de stopknop (signal) breekt het wachten meteen af.
+function wacht(ms, signal) {
+  return new Promise((klaar, mislukt) => {
+    const timer = setTimeout(klaar, ms);
+    signal.addEventListener("abort", () => {
+      clearTimeout(timer);
+      mislukt(new DOMException("Gestopt", "AbortError"));
+    }, { once: true });
+  });
+}
+
+// J.A.R.V.I.S. bleef te lang bezig met een vorige vraag (HTTP 409): vriendelijk melden,
+// de vraag uit de chat halen (hij is niet verstuurd) en terugzetten in het tekstvak,
+// zodat je hem zo opnieuw kunt sturen.
+function bezigMelding(antwoord, vraagNode, bericht, tekst) {
+  antwoord.weg();
+  vraagNode.remove();
   jarvisBericht({ tekst: bericht || BEZIG_TEKST }, "busy-note");
   input.value = tekst;
   groei();
@@ -433,7 +491,7 @@ function toonVoorstellen(s) {
   const sleutel = lijst.join("|");
   // Niet te vaak wisselen, en niet terwijl je er met de muis of het toetsenbord op zit.
   if (sleutel === voorstelSleutel || Date.now() - voorstelTijd < 3000) return;
-  if (box.matches(":hover") || box.contains(document.activeElement)) return;
+  if (inGebruik(box)) return;
   voorstelSleutel = sleutel;
   voorstelTijd = Date.now();
   box.replaceChildren(...lijst.map((t) => el("button", { type: "button" }, t)));
@@ -441,7 +499,10 @@ function toonVoorstellen(s) {
 
 $("#suggestions").addEventListener("click", (event) => {
   const knop = event.target.closest("button");
-  if (knop) vraag(knop.textContent);
+  if (!knop) return;
+  vraag(knop.textContent);
+  // Met een muis meteen verder kunnen typen. (Op een telefoon niet: dan springt het toetsenbord open.)
+  if (echteMuis.matches) input.focus();
 });
 
 // -- AI-modus en de knop "sleutel instellen" ----------------------------------------------
