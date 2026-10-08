@@ -691,6 +691,8 @@ span.thumb { cursor: default; }
 
 .cta { margin: var(--s-3) var(--s-3) 0; padding: var(--s-3) var(--s-1) var(--s-3) var(--s-3); font-size: var(--fs-md); }
 .cta > div { flex: 1; }
+/* Onder de melding begint het gesprek: een lijntje, zodat weggescrolde berichten er niet tegenaan plakken. */
+.cta:not([hidden]) + .messages { margin-top: var(--s-3); border-top: 1px solid var(--border); }
 .cta .hint { margin-top: var(--s-1); }
 .cta-link {
   display: inline-flex; align-items: center; gap: 6px; margin-top: var(--s-2); min-height: 24px;
