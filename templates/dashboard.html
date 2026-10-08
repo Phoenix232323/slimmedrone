@@ -168,18 +168,20 @@
 
   <aside class="panel jarvis-panel" id="jarvis" data-in="jarvis" aria-labelledby="jarvisTitle">
     <header class="jarvis-head">
+      {# De orb bestaat uit losse lagen (elk een eigen SVG). We draaien de lagen zelf,
+         zodat de grafische kaart het werk doet en de Raspberry Pi niet hoeft te tekenen. #}
       <div class="orb" id="orb" data-state="idle" aria-hidden="true">
-        <svg viewBox="0 0 64 64">
+        <svg class="orb-laag orb-glow" viewBox="0 0 64 64">
           <defs>
             <radialGradient id="orbCore"><stop offset="0" stop-color="#f2feff"/><stop offset=".5" stop-color="#8ef0fb"/><stop offset="1" stop-color="#22d3ee" stop-opacity="0"/></radialGradient>
             <radialGradient id="orbGlow"><stop offset=".35" stop-color="#22d3ee" stop-opacity=".28"/><stop offset="1" stop-color="#22d3ee" stop-opacity="0"/></radialGradient>
           </defs>
-          <circle class="orb-glow" cx="32" cy="32" r="31" fill="url(#orbGlow)"/>
-          <g class="orb-ring orb-ring-a"><circle cx="32" cy="32" r="28" stroke-dasharray="15 4 1 2"/></g>
-          <g class="orb-ring orb-ring-b"><circle cx="32" cy="32" r="22.5" stroke-dasharray="1 2.534"/></g>
-          <g class="orb-coils"><circle cx="32" cy="32" r="15.5" stroke-dasharray="7 2.739"/></g>
-          <circle class="orb-core" cx="32" cy="32" r="10" fill="url(#orbCore)"/>
+          <circle cx="32" cy="32" r="31" fill="url(#orbGlow)"/>
         </svg>
+        <svg class="orb-laag orb-ring-a" viewBox="0 0 64 64"><circle cx="32" cy="32" r="28" stroke-dasharray="15 4 1 2"/></svg>
+        <svg class="orb-laag orb-ring-b" viewBox="0 0 64 64"><circle cx="32" cy="32" r="22.5" stroke-dasharray="1 2.534"/></svg>
+        <svg class="orb-laag orb-coils" viewBox="0 0 64 64"><circle cx="32" cy="32" r="15.5" stroke-dasharray="7 2.739"/></svg>
+        <svg class="orb-laag orb-core" viewBox="0 0 64 64"><circle cx="32" cy="32" r="10" fill="url(#orbCore)"/></svg>
       </div>
       <div class="jarvis-title">
         <h2 id="jarvisTitle">J.A.R.V.I.S.</h2>

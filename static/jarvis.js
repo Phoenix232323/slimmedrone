@@ -86,7 +86,7 @@ function begroeting(tekst) {
   const groot = orb.cloneNode(true);
   groot.removeAttribute("id");
   groot.classList.add("orb-groot");
-  groot.querySelector("defs")?.remove();  // de kleuren (verlopen) staan al in de orb bovenin
+  groot.querySelector("defs")?.remove();  // de kleurverlopen staan al in de orb bovenin (unieke id's)
   const tip = !kanLuisteren ? "Typ je vraag hieronder."
     : spraak.wekwoord ? "Zeg \u201cJarvis, ...\u201d of typ je vraag." : "Typ je vraag of druk op de microfoon.";
   messages.append(el("div", { class: "idle", "aria-hidden": "true" }, groot,
