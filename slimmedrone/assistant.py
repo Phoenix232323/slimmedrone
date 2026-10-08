@@ -48,6 +48,7 @@ MAX_TOKENS = 16000       # ruimte voor nadenken + antwoord
 MAX_ROUNDS = 8           # zoveel verzoeken aan Claude per vraag (tools, zoeken, ...)
 JSON_RETRIES = 2         # zo vaak opnieuw proberen als Claude kapotte tool-invoer stuurt
 KEEPALIVE = 10.0         # seconden: zo vaak "ik ben nog bezig" naar de browser
+OFFLINE_PAUSE = 120      # seconden: na een verbindingsfout eerst even lokaal antwoorden
 CHAT_IMAGE_WIDTH = 640   # afbeeldingen in de chat worden hooguit zo breed
 DEFAULT_WATCH_MINUTES = 60
 MAX_WATCH_MINUTES = 720
@@ -248,7 +249,8 @@ class Assistant:
         self._lock = threading.Lock()
         self._turns = {}                # gebruiker -> [(vraag, antwoord), ...] voor Claude
         self._messages = {}             # gebruiker -> chatberichten voor de website
-        self._busy = set()              # gebruikers voor wie J.A.R.V.I.S. nu bezig is
+        self._busy = {}                 # gebruiker -> de vraag waar J.A.R.V.I.S. nu mee bezig is
+        self._offline_until = 0.0       # tot dan Claude overslaan (net geen verbinding)
         if settings is not None:
             ai = settings.claude()
             self.configure(api_key=ai["api_key"], model=ai["model"], effort=ai["effort"], web=ai["web"])
@@ -272,6 +274,7 @@ class Assistant:
                 self.web = bool(web)
             if api_key is not None:
                 self.client, self.problem = self._make_client(api_key)
+                self._offline_until = 0.0  # nieuwe sleutel: meteen weer Claude proberen
         if self.client:
             log.info("J.A.R.V.I.S. gebruikt Claude (%s, effort %s, internet zoeken %s)",
                      self.model, self.effort, "aan" if self.web else "uit")
@@ -289,7 +292,10 @@ class Assistant:
         except ImportError:
             return None, "Het pakket 'anthropic' is niet geïnstalleerd (pip install anthropic)."
         self._anthropic = anthropic
-        return anthropic.Anthropic(api_key=api_key, timeout=90.0, max_retries=2), None
+        # Snel opgeven als er geen verbinding komt (connect), maar ruim wachten op een
+        # antwoord waar Claude lang over nadenkt (90 s). Eén keer opnieuw proberen.
+        timeout = anthropic.Timeout(90.0, connect=10.0)
+        return anthropic.Anthropic(api_key=api_key, timeout=timeout, max_retries=1), None
 
     @property
     def mode(self) -> str:
@@ -319,20 +325,21 @@ class Assistant:
         Haakt de browser halverwege af, dan maakt de thread het antwoord gewoon af
         (het komt dan in de geschiedenis).
         """
-        if not self._claim(user):
+        token = self._claim(user)
+        if token is None:
             return None
         events = queue.Queue()
 
         def emit(name, data):
             if name in ("klaar", "fout"):
-                self._release(user)  # eerst vrijgeven, zodat een volgende vraag meteen mag
+                self._release(user, token)  # eerst vrijgeven, zodat een volgende vraag meteen mag
             events.put((name, data))
 
         def work():
             try:
                 self._answer(user, question, emit)
             finally:
-                self._release(user)
+                self._release(user, token)  # (doet niets als emit dat al deed)
                 events.put(None)  # einde van de stroom
 
         threading.Thread(target=work, name=f"jarvis-{user}", daemon=True).start()
@@ -343,7 +350,8 @@ class Assistant:
 
         Geeft {"antwoord", "acties", "bron"}, {"fout"} bij een fout, of None als hij bezig is.
         """
-        if not self._claim(user):
+        token = self._claim(user)
+        if token is None:
             return None
         result = {}
 
@@ -354,19 +362,27 @@ class Assistant:
         try:
             self._answer(user, question, emit)
         finally:
-            self._release(user)
+            self._release(user, token)
         return result
 
-    def _claim(self, user) -> bool:
+    def _claim(self, user):
+        """Markeer de gebruiker als bezig. Geeft een "bewijs" voor deze vraag, of None als hij al bezig is."""
         with self._lock:
             if user in self._busy:
-                return False
-            self._busy.add(user)
-            return True
+                return None
+            token = object()
+            self._busy[user] = token
+            return token
 
-    def _release(self, user):
+    def _release(self, user, token):
+        """Niet meer bezig, maar alleen als het nog om deze vraag gaat.
+
+        Zo kan een oude vraag die net klaar is nooit de bezig-vlag van een nieuwe
+        vraag weghalen (dan zouden twee vragen tegelijk kunnen lopen).
+        """
         with self._lock:
-            self._busy.discard(user)
+            if self._busy.get(user) is token:
+                del self._busy[user]
 
     def _answer(self, user, question, emit):
         """Beantwoord één vraag. Stuurt alles via emit en eindigt met "klaar" of "fout"."""
@@ -378,15 +394,31 @@ class Assistant:
             with self._config_lock:
                 client, model, effort, web = self.client, self.model, self.effort, self.web
             source = "lokaal"
-            if client:
+            if client and time.time() < self._offline_until:
+                # Claude was net onbereikbaar: niet weer minutenlang wachten op een time-out.
+                reply.say("Claude was net niet bereikbaar, dus ik antwoord even met mijn lokale versie:")
+                reply.new_paragraph()
+                self._local(user, question, snap, reply)
+            elif client:
                 try:
                     self._ask_claude(client, model, effort, web, user, question, snap, reply)
                     source = "claude"
+                    self._note_problem(client, None)  # Claude werkt (weer)
                 except Exception as exc:
+                    explanation, lasting = self._explain_error(exc, model)
+                    if lasting:  # blijft misgaan tot je iets aanpast: ook tonen op Instellingen
+                        self._note_problem(client, explanation)
+                    if self._anthropic and isinstance(exc, self._anthropic.APIConnectionError):
+                        self._offline_until = time.time() + OFFLINE_PAUSE  # geen internet of time-out
                     reply.new_paragraph()
-                    reply.say(f"{self._explain_error(exc, model)} Ik antwoord nu met mijn lokale versie:")
-                    reply.new_paragraph()
-                    self._local(user, question, snap, reply)
+                    if reply.actions:
+                        # Claude had al iets gedaan (bijv. een wachter of foto). De lokale versie
+                        # zou de vraag opnieuw uitvoeren en dat dubbel doen, dus dat slaan we over.
+                        reply.say(f"{explanation} Wat ik al gedaan had, is wel gelukt: {_join(reply.actions)}.")
+                    else:
+                        reply.say(f"{explanation} Ik antwoord nu met mijn lokale versie:")
+                        reply.new_paragraph()
+                        self._local(user, question, snap, reply)
             else:
                 self._local(user, question, snap, reply)
 
@@ -576,28 +608,43 @@ class Assistant:
             lines += ["", "Actieve wachters: " + ", ".join(f"#{w['id']} {w['omschrijving']}" for w in watches)]
         return "\n".join(lines)
 
-    def _explain_error(self, exc, model) -> str:
+    def _explain_error(self, exc, model) -> tuple[str, bool]:
+        """Leg een fout van Claude in gewone taal uit.
+
+        Geeft (uitleg, blijvend). Blijvend = het blijft misgaan tot je iets aanpast
+        (sleutel, tegoed, model); dan toont de pagina Instellingen de uitleg ook.
+        """
         anthropic = self._anthropic
         log.warning("Claude-fout: %s", exc)
         if anthropic is not None:
+            message = _api_message(exc)  # alleen de tekst van de API, zonder request-id enzo
+            if getattr(exc, "type", None) == "billing_error" or "credit balance" in message.lower():
+                return ("Je Claude-sleutel heeft geen tegoed (meer). Koop tegoed op console.anthropic.com "
+                        "(bij Plans & Billing); daarna werkt het meteen."), True
             if isinstance(exc, anthropic.AuthenticationError):
-                return "Mijn Claude-sleutel klopt niet (controleer hem op de pagina Instellingen)."
+                return "Mijn Claude-sleutel klopt niet (controleer hem op de pagina Instellingen).", True
             if isinstance(exc, anthropic.PermissionDeniedError):
-                return "Deze Claude-sleutel heeft geen toegang tot dit model."
+                return "Deze Claude-sleutel heeft geen toegang tot dit model.", True
             if isinstance(exc, anthropic.NotFoundError):
-                return f"Het model '{model}' is niet gevonden (kies een ander op de pagina Instellingen)."
+                return f"Het model '{model}' is niet gevonden (kies een ander op de pagina Instellingen).", True
             if isinstance(exc, anthropic.RateLimitError):
-                return "Ik krijg even te veel vragen tegelijk."
+                return "Ik krijg even te veel vragen tegelijk.", False
             if isinstance(exc, anthropic.BadRequestError):
-                return f"Claude gaf een foutmelding: {exc.message}"
+                return f"Claude gaf een foutmelding: {message or 'ongeldig verzoek'}", False
             if isinstance(exc, anthropic.APIStatusError):
-                return f"Claude is even niet bereikbaar (fout {exc.status_code})."
+                return f"Claude is even niet bereikbaar (fout {exc.status_code}).", False
             if isinstance(exc, anthropic.APIConnectionError):
-                return "Ik kan Claude niet bereiken. Is er internet?"
+                return "Ik kan Claude niet bereiken. Is er internet?", False
         if isinstance(exc, ValueError):
-            return "Claude stuurde een antwoord dat ik niet kon lezen."
+            return "Claude stuurde een antwoord dat ik niet kon lezen.", False
         log.exception("Onverwachte fout in de assistent")
-        return "Er ging iets mis met Claude."
+        return "Er ging iets mis met Claude.", False
+
+    def _note_problem(self, client, problem):
+        """Onthoud (of vergeet) een blijvend probleem met Claude, voor de pagina Instellingen."""
+        with self._config_lock:
+            if self.client is client:  # niet als er intussen een andere sleutel is ingesteld
+                self.problem = problem
 
     # -- tools uitvoeren -------------------------------------------------------
 
@@ -670,8 +717,13 @@ class Assistant:
         return ToolResult("Uitgezoomd naar het volledige beeld.", actie="zoom uit")
 
     def _tool_take_snapshot(self, args, snap, user):
+        # Het nieuwste beeld (de vraag kan al even geleden gesteld zijn). Is de camera los,
+        # dan is frame None en is het laatste beeld het plaatje "Geen camerabeeld": geen foto.
+        frame = self.pipeline.snapshot().frame
+        if frame is None:
+            return ToolResult("Er is geen camerabeeld om een foto van te maken.", fout=True)
         if args.get("full_frame"):
-            image = snap.frame
+            image = frame
             jpeg = None
         else:  # precies wat de gebruiker op het dashboard ziet (met zoom en kaders)
             jpeg = self.pipeline.latest_jpeg()
@@ -790,7 +842,7 @@ class Assistant:
         camera = getattr(self.pipeline, "camera", None)
         if camera is not None:
             if camera.connected:
-                lines.append(f"- Camera: verbonden (bron: {camera.source})")
+                lines.append(f"- Camera: verbonden (bron: {safe_source(camera.source)})")
             else:
                 lines.append(f"- Camera: NIET verbonden ({camera.error or 'geen beeld'})")
         stats = pipeline_stats(self.pipeline)
@@ -1023,15 +1075,28 @@ class Assistant:
         if not watches:
             return "Er staan geen wachters aan."
         chosen = self._matching_watches(q)
+        names = ", ".join(f"#{w['id']} {w['omschrijving']}" for w in watches)
+        named = self._watch_target(q)
+        if not chosen and named:  # "stop met letten op de kat", maar er is alleen een hond-wachter
+            return f"Er is geen wachter voor {named}. Nu aan: {names}."
         if not chosen and (words & {"alle", "allemaal", "alles"} or len(watches) == 1):
-            chosen = watches
+            chosen = watches  # "stop alle wachters", of "stop de wachter" als er maar één is
         if not chosen:
-            names = ", ".join(f"#{w['id']} {w['omschrijving']}" for w in watches)
             return (f"Welke wachter moet ik stoppen? Nu aan: {names}. Zeg bijvoorbeeld "
                     f"\"stop met letten op {watches[0]['omschrijving']}\" of \"stop alle wachters\".")
         for w in chosen:
             run("cancel_watch", watch_id=w["id"])
         return f"Ik let niet meer op {_join(w['omschrijving'] for w in chosen)}."
+
+    def _watch_target(self, q):
+        """Waar gaat de zin over? 'de kat' -> 'kat', 'Johan' -> 'Johan', of None."""
+        if re.search(r"onbeken|vreemde", q):
+            return "onbekende gezichten"
+        for p in self._known_people() or []:
+            if re.search(rf"\b{re.escape(p['naam'].lower())}\b", q):
+                return p["naam"]
+        label = find_label(q)
+        return dutch(label) if label else None
 
     def _local_watch(self, q, run) -> str:
         if re.search(r"onbeken|vreemde", q):
@@ -1210,11 +1275,11 @@ HELP = """Ik draai nu in de **lokale modus** (zonder Claude). Dit begrijp ik al:
 
 Wil je dat ik net zo slim word als ChatGPT, gewone vragen beantwoord en op internet zoek? \
 Ga naar **Instellingen** en vul een Claude-sleutel van Anthropic in (aan te maken op \
-console.anthropic.com)."""
+console.anthropic.com; je hebt daar wel wat tegoed voor nodig)."""
 
 NEEDS_CLAUDE = ("Voor algemene vragen, het weer of het nieuws heb ik Claude nodig. Vul op de pagina "
                 "**Instellingen** een Claude-sleutel in, dan kan ik dat ook (en op internet zoeken).")
-CLAUDE_DOWN = "Voor algemene vragen, het weer of het nieuws heb ik Claude nodig, en die is nu even niet bereikbaar."
+CLAUDE_DOWN = "Voor algemene vragen, het weer of het nieuws heb ik Claude nodig, en dat lukte nu niet."
 NO_IMAGE = "Ik heb nog geen camerabeeld binnen. Controleer de camera."
 
 GREETINGS = {"hallo", "hoi", "hey", "hee", "hai", "hi", "hello", "yo", "dag", "goedemorgen",
@@ -1284,6 +1349,27 @@ def pipeline_stats(pipeline) -> dict:
     return {"beeld_fps": round(pipeline.fps, 1)}
 
 
+def _api_message(exc) -> str:
+    """Alleen de foutmelding van de API ('Your credit balance is too low...').
+
+    str(exc) is 'Error code: 400 - {...}' met de hele Python-dict erin; dat is
+    niet leesbaar in de chat (en niet om voor te lezen).
+    """
+    body = getattr(exc, "body", None)
+    error = body.get("error") if isinstance(body, dict) else None
+    return str(error.get("message") or "") if isinstance(error, dict) else ""
+
+
+def safe_source(source) -> str:
+    """De camerabron zonder geheimen, zodat hij in de chat (en naar Claude) mag.
+
+    'http://pi:8000/stream.mjpg?token=abc' -> 'http://pi:8000/stream.mjpg'
+    'rtsp://naam:wachtwoord@camera/live'   -> 'rtsp://camera/live'
+    """
+    text = re.split(r"[?#]", str(source), maxsplit=1)[0]
+    return re.sub(r"://[^/@]*@", "://", text)
+
+
 def _display_name(user: str) -> str:
     """'johan' -> 'Johan'."""
     return user[:1].upper() + user[1:]
@@ -1350,13 +1436,15 @@ def _minutes_in(text: str, default: int) -> int:
         return int(m.group(1)) * 15
     if "kwartier" in text:
         return 15
+    if re.search(r"anderhalf\s*uur", text):  # vóór "half uur", want dat zit erin
+        return 90
     if re.search(r"half\s*uur|halfuur", text):
         return 30
     m = re.search(r"(\d+)\s*(uur|uren)\b", text)
     if m:
         return int(m.group(1)) * 60
-    if re.search(r"\buurtje\b", text):
-        return 60
+    if re.search(r"\buurtje\b|\b(afgelopen|laatste|komende|komend|volgende) uur\b", text):
+        return 60  # "het afgelopen uur", "het komende uur"
     return default
 
 

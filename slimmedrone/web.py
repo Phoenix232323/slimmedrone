@@ -21,7 +21,7 @@ from flask import (Flask, Response, abort, jsonify, redirect, render_template, r
 from . import system
 from .auth import LoginLimiter
 from .faces import clean_name
-from .assistant import pipeline_stats
+from .assistant import pipeline_stats, safe_source
 from .settings import Settings
 from .zoom import crop
 
@@ -153,7 +153,7 @@ def create_app(cfg, pipeline, faces, objects, alerts, assistant, users,
         after = request.args.get("na", 0, type=int)
         return jsonify(
             camera={"verbonden": pipeline.camera.connected, "fout": pipeline.camera.error,
-                    "bron": pipeline.camera.source},
+                    "bron": safe_source(pipeline.camera.source)},  # zonder token of wachtwoord
             fps=round(pipeline.fps, 1),
             objecten=[{"label": d.label, "naam": d.naam, "zekerheid": round(d.confidence, 2),
                        "kader": list(d.box)} for d in snap.detections],

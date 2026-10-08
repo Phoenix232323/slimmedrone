@@ -11,6 +11,7 @@ import logging
 import os
 import re
 import socket
+import ssl
 import subprocess
 import sys
 import time
@@ -71,6 +72,25 @@ def https_files(cfg):
     log.error("Kon geen https-certificaat maken. Installeer het pakket 'cryptography' "
               "(pip install cryptography) of het programma openssl. De website draait nu via http.")
     return None
+
+
+class _HandshakeInThread(ssl.SSLContext):
+    """https waarbij één trage verbinding de rest van de website niet laat wachten.
+
+    Normaal doet de webserver de https-"handdruk" meteen bij het aannemen van een
+    verbinding, in zijn ene hoofdlus. Opent een apparaat een verbinding en stuurt het
+    daarna niets, dan wacht de hele website (voor iedereen). Daarom doen we de
+    handdruk pas bij het eerste lezen, in de eigen thread van die verbinding.
+    """
+
+    def wrap_socket(self, sock, server_side=False, do_handshake_on_connect=True, **kwargs):
+        return super().wrap_socket(sock, server_side=server_side, do_handshake_on_connect=False, **kwargs)
+
+
+def https_context(cert, key):
+    context = _HandshakeInThread(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(str(cert), str(key))
+    return context
 
 
 def _cert_with_cryptography(cert, key, names, ips):
@@ -157,7 +177,7 @@ def main():
               "   kies 'Geavanceerd' en dan 'Doorgaan'. Daarna werkt ook de microfoon.)")
     print("  Stoppen: Ctrl+C\n")
     app.run(host=cfg.host, port=cfg.port, threaded=True, debug=False, use_reloader=False,
-            ssl_context=tuple(str(p) for p in tls) if tls else None)
+            ssl_context=https_context(*tls) if tls else None)
 
 
 if __name__ == "__main__":
