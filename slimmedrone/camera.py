@@ -167,12 +167,13 @@ class Camera:
         if not cap.isOpened():
             raise RuntimeError("kan camera/stream niet openen")
         if isinstance(src, int):
-            # MJPG: veel USB-webcams halen alleen zo 30 (of 60) beelden per seconde op 720p.
-            cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+            if os.name != "nt":
+                # Op Linux (bijv. de Pi) halen USB-webcams 30 of 60 beelden per seconde op
+                # 720p vaak alleen als ze MJPG sturen (anders te veel data voor USB).
+                cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
             cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
             cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
             cap.set(cv2.CAP_PROP_FPS, self.wanted_fps)
-            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # altijd het nieuwste beeld, geen achterstand
             log.info("Webcam: %dx%d, %.0f beelden/s (gevraagd: %d)",
                      cap.get(cv2.CAP_PROP_FRAME_WIDTH), cap.get(cv2.CAP_PROP_FRAME_HEIGHT),
                      cap.get(cv2.CAP_PROP_FPS), self.wanted_fps)
@@ -216,8 +217,10 @@ class Camera:
         cam = Picamera2(ai.camera_num if ai else 0)
         try:
             fps = self.wanted_fps
-            if ai:
-                fps = ai.frame_rate(fps)  # sneller dan het netwerk rekent heeft geen zin
+            if ai and ai.frame_rate(fps) < fps:  # sneller filmen dan het netwerk rekent heeft geen zin
+                fps = ai.frame_rate(fps)
+                log.info("De AI Camera herkent maximaal %g beelden per seconde, dus de camera filmt op %g "
+                         "(CAMERA_FPS=%d).", fps, fps, self.wanted_fps)
             sensor = {}
             if fps > 30:
                 sensor, fps = _fast_sensor_mode(cam, fps)
@@ -263,6 +266,6 @@ def _fast_sensor_mode(cam, fps):
         best = max(m["fps"] for m in modes)
         log.warning("Deze camera kan maximaal %.0f beelden per seconde (CAMERA_FPS=%d); we gebruiken %.0f.",
                     best, fps, best)
-        return {}, int(best)
+        return {}, round(best)
     mode = max(fast, key=lambda m: m["size"][0] * m["size"][1])  # de snelle stand met het meeste beeld
     return {"output_size": mode["size"], "bit_depth": mode["bit_depth"]}, fps
