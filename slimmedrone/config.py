@@ -5,7 +5,7 @@ niet aan te passen om bijvoorbeeld een andere camera te kiezen.
 """
 import os
 import secrets
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -37,9 +37,14 @@ class Config:
     stream_fps: int
     jpeg_quality: int
 
-    ai_enabled: bool
+    ai_enabled: bool           # False = altijd de lokale versie van J.A.R.V.I.S. (JARVIS_AI=uit)
     claude_model: str
     claude_effort: str
+    jarvis_web: bool           # mag J.A.R.V.I.S. op internet zoeken?
+    jarvis_city: str           # plaats voor het weer en lokaal nieuws (mag leeg)
+    anthropic_api_key: str = field(repr=False)  # geheim: nooit printen of loggen
+
+    https: bool                # website via https (nodig voor de microfoon op telefoon/laptop)
 
     data_dir: Path
 
@@ -83,11 +88,10 @@ def load_config() -> Config:
     load_dotenv(ROOT / ".env")
     env = os.getenv
 
+    # auto (of aan): Claude gebruiken zodra er een sleutel is, uit .env of van de
+    # website (pagina Instellingen). uit: altijd de lokale versie.
     ai_setting = env("JARVIS_AI", "auto").strip().lower()
-    if ai_setting == "auto":
-        ai_enabled = bool(env("ANTHROPIC_API_KEY"))
-    else:
-        ai_enabled = _bool(ai_setting)
+    ai_enabled = ai_setting == "auto" or _bool(ai_setting)
 
     return Config(
         camera_source=env("CAMERA_SOURCE", "0"),
@@ -110,5 +114,9 @@ def load_config() -> Config:
         ai_enabled=ai_enabled,
         claude_model=env("CLAUDE_MODEL", "claude-opus-5-5"),
         claude_effort=env("CLAUDE_EFFORT", "low"),
+        jarvis_web=_bool(env("JARVIS_WEB", "aan")),
+        jarvis_city=env("JARVIS_PLAATS", "").strip(),
+        anthropic_api_key=env("ANTHROPIC_API_KEY", "").strip(),
+        https=_bool(env("HTTPS", "uit")),
         data_dir=Path(env("DATA_DIR", str(ROOT / "data"))).resolve(),
     )
