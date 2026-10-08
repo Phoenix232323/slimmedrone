@@ -160,7 +160,9 @@ input[type="range"] { padding: 0; min-height: 28px; border: 0; background: trans
 
 /* -- panelen met hoekjes ---------------------------------------------------- */
 .panel { position: relative; background: var(--panel); border: 1px solid var(--line); min-width: 0; }
-/* Vier cyaan hoekjes, getekend met acht dunne strepen als achtergrond. */
+/* Vier cyaan hoekjes, getekend met acht dunne strepen als achtergrond.
+   Let op: een paneel moet daarom altijd "position: relative" (of sticky) houden,
+   anders tekenen de hoekjes om het hele scherm heen. */
 .panel::before {
   content: ""; position: absolute; inset: -1px; pointer-events: none; z-index: 1;
   --c: var(--accent-60); --s: 9px;
@@ -327,15 +329,19 @@ a.readout:hover { border-color: var(--line-2); }
 .tool.toggle[aria-pressed="true"] { color: var(--accent); background: var(--accent-08); border-color: var(--accent-35); }
 
 /* -- telemetrie ------------------------------------------------------------ */
-.telemetry { display: grid; grid-template-columns: minmax(150px, 1.6fr) repeat(5, minmax(0, 1fr)); }
-.tele { display: grid; align-content: start; gap: 3px; padding: 10px 14px 11px; border-left: 1px solid var(--line); min-width: 0; }
-.tele:first-child { border-left: 0; }
+/* De vakjes groeien mee en lopen door naar een nieuwe rij als het niet past. De dunne
+   lijnen ertussen zijn de achtergrond die door de "gap" van 1px heen schijnt. */
+.telemetry { display: flex; flex-wrap: wrap; gap: 1px; background: var(--line); }
+.tele {
+  flex: 1 1 110px; display: grid; align-content: start; gap: 3px; padding: 10px 14px 11px;
+  min-width: 0; background: var(--panel);
+}
 .tele .value { display: flex; align-items: baseline; gap: 4px; }
 .tele .value b { font: 600 20px/1.15 var(--mono); font-variant-numeric: tabular-nums; color: var(--text); letter-spacing: -.01em; }
 .tele .value small { font: 11px var(--mono); color: var(--dim); }
 .tele.warn .value b { color: var(--warn); }
 .tele.bad .value b { color: var(--bad); }
-.tele-wide { grid-template-columns: auto 1fr; column-gap: 12px; }
+.tele-wide { flex: 2 1 230px; grid-template-columns: auto 1fr; column-gap: 12px; }
 .tele-wide .label, .tele-wide .value { grid-column: 1; }
 .tele-wide canvas { grid-column: 2; grid-row: 1 / span 2; width: 100%; height: 34px; align-self: center; min-width: 0; }
 .meter { height: 2px; background: var(--line); overflow: hidden; margin-top: 3px; }
@@ -543,6 +549,11 @@ a.readout:hover { border-color: var(--line-2); }
 .source-tag { font: 10px var(--mono); letter-spacing: .06em; color: var(--dim); text-transform: uppercase; }
 .msg-foot .icon-btn { margin-left: auto; }
 
+/* Lege chat: een grote orb in het midden ("stand-by"). */
+.idle { margin: auto 0; display: grid; justify-items: center; gap: 8px; padding: 16px 0; text-align: center; }
+.orb-groot { width: 112px; height: 112px; margin-bottom: 6px; }
+.idle .hint { max-width: 30ch; }
+
 .suggestions { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 10px; }
 .suggestions button {
   min-height: 30px; padding: 4px 10px; border: 1px solid var(--line-2); border-radius: 2px; background: transparent;
@@ -569,12 +580,13 @@ a.readout:hover { border-color: var(--line-2); }
 .composer-note { margin: -4px 10px 10px; padding: 8px 10px; font-size: 12px; color: var(--text); border: 1px solid var(--warn-40); background: var(--warn-15); }
 
 /* -- meldingen rechtsonder ------------------------------------------------- */
+/* Linksonder: dan zitten ze niet over het tekstvak van J.A.R.V.I.S. Klikken gaan er dwars doorheen. */
 .toasts {
-  position: fixed; right: 16px; bottom: 16px; z-index: 60; display: grid; gap: 8px;
+  position: fixed; left: 16px; bottom: 16px; z-index: 60; display: grid; gap: 8px;
   width: min(360px, calc(100vw - 32px)); pointer-events: none;
 }
 .toast {
-  display: flex; align-items: center; gap: 10px; padding: 10px 12px; font-size: 13px; pointer-events: auto;
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px; font-size: 13px;
   background: var(--panel-2); border: 1px solid var(--line-2); border-left: 2px solid var(--accent);
   animation: toast-in .2s ease-out;
 }
@@ -728,19 +740,16 @@ dialog.dialog::backdrop { background: rgba(2, 4, 8, .82); }
 /* -- middelgrote schermen ----------------------------------------------------- */
 @media (max-width: 1360px) {
   .dash { grid-template-columns: minmax(0, 1fr) 360px; }
-  .telemetry { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .tele:nth-child(4) { border-left: 0; }
-  .tele:nth-child(n + 4) { border-top: 1px solid var(--line); }
 }
 @media (max-width: 1180px) {
   .panels { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "objects faces" "alerts alerts" "activity watchers"; }
   .settings-grid { grid-template-columns: minmax(0, 1fr); }
-  .settings-side { position: static; }
+  .settings-side { position: relative; top: auto; }
   .nav a { padding: 0 9px; }
 }
 @media (max-width: 980px) and (min-width: 721px) {
   .dash { grid-template-columns: minmax(0, 1fr); }
-  .jarvis-panel { position: static; height: 72vh; }
+  .jarvis-panel { position: relative; top: auto; height: 72vh; }
   .user { display: none; }
 }
 
@@ -751,7 +760,15 @@ dialog.dialog::backdrop { background: rgba(2, 4, 8, .82); }
   .nav, .account { display: none; }
   .readout { height: 30px; padding: 0 8px; }
   .tabbar { display: grid; }
-  .toasts { top: calc(var(--header-h) + 8px); bottom: auto; right: 12px; width: calc(100vw - 24px); }
+  .toasts { top: calc(var(--header-h) + 8px); bottom: auto; left: 12px; width: calc(100vw - 24px); }
+  .toast { padding: 7px 10px; font-size: 12.5px; }
+  .toast img { width: 28px; height: 28px; }
+  .orb { width: 40px; height: 40px; }
+  .jarvis-title { margin-left: 4px; }
+  .jarvis-title h2 { letter-spacing: .2em; }
+  .jarvis-title .mode { letter-spacing: .08em; }
+  .setting:has(> .switch) { flex-wrap: nowrap; }
+  .orb-groot { width: 88px; height: 88px; }
 
   .dash {
     grid-template-columns: minmax(0, 1fr); padding: 10px 12px calc(var(--tabbar-h) + 14px + env(safe-area-inset-bottom, 0px));
@@ -785,28 +802,22 @@ dialog.dialog::backdrop { background: rgba(2, 4, 8, .82); }
   .hud-reticle { width: 52px; height: 52px; margin: -26px 0 0 -26px; }
   .video-hint { display: none; }
 
-  .telemetry { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .tele { padding: 8px 10px; }
+  .tele { flex-basis: 100px; padding: 8px 10px; }
   .tele .value b { font-size: 17px; }
-  .tele-wide { grid-column: 1 / -1; grid-template-columns: auto 1fr; border-bottom: 1px solid var(--line); }
-  .tele:nth-child(2), .tele:nth-child(5) { border-left: 0; }
-  .tele:nth-child(4) { border-left: 1px solid var(--line); }
-  .tele:nth-child(n + 2) { border-top: 0; }
-  .tele:nth-child(n + 5) { border-top: 1px solid var(--line); }
+  .tele-wide { flex-basis: 100%; }
 
   .jarvis-panel {
-    position: static; min-height: 0;
+    position: relative; top: auto; min-height: 0;
     height: calc(100vh - var(--header-h) - var(--tabbar-h) - 26px - env(safe-area-inset-bottom, 0px));
     height: calc(100dvh - var(--header-h) - var(--tabbar-h) - 26px - env(safe-area-inset-bottom, 0px));
   }
-  .icon-btn { width: 44px; height: 44px; }
-  .icon-btn.small { width: 36px; height: 36px; }
+  .icon-btn, .icon-btn.small { width: 44px; height: 44px; }
   .composer .icon-btn, .send { width: 44px; height: 44px; }
   .composer textarea { min-height: 44px; font-size: 16px; }  /* 16px: geen automatisch inzoomen op iPhone */
   .voice-menu { left: 8px; right: 8px; width: auto; }
-  .suggestions { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
-  .suggestions button { flex: none; min-height: 36px; }
-  .seg button { min-height: 40px; }
+  .suggestions button { min-height: 44px; }
+  .suggestions button:nth-child(n + 4) { display: none; }  /* op de telefoon hoogstens 3 voorstellen */
+  .seg button { min-height: 44px; padding: 0 6px; }
   .obj-list button, .face-list li, .watchers li { min-height: 44px; }
   .timeline .thumb { width: 44px; height: 44px; }
   .timeline li { grid-template-columns: 44px 1fr; }
@@ -830,7 +841,7 @@ dialog.dialog::backdrop { background: rgba(2, 4, 8, .82); }
   .inline-controls { flex-wrap: wrap; width: 100%; }
   .inline-controls select { min-width: 0; max-width: none; flex: 1 1 200px; }
   .inline-controls input[type="range"] { flex: 1; width: auto; }
-  .seg { width: 100%; }
+  .settings-page .seg { width: 100%; }
   .login-card { padding: 22px; }
 }
 

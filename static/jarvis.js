@@ -16,9 +16,10 @@ let gesprekGestart = false; // al iets gevraagd sinds de pagina geladen is?
 const orbStaat = { denkt: false, luistert: false, spreekt: false };
 
 function orbBijwerken() {
-  orb.dataset.state = orbStaat.luistert ? "listening"
+  const staat = orbStaat.luistert ? "listening"
     : orbStaat.spreekt ? "speaking"
       : orbStaat.denkt ? "thinking" : "idle";
+  document.querySelectorAll(".orb").forEach((o) => { o.dataset.state = staat; });
 }
 
 seintjes.addEventListener("spreekt", (e) => {
@@ -49,6 +50,7 @@ function kop(wie, tijd) {
 }
 
 function gebruikerBericht(tekst, tijd = Date.now() / 1000) {
+  messages.querySelector(".idle")?.remove();
   messages.append(el("div", { class: "msg user" }, kop("Jij", tijd), el("div", { class: "msg-body" }, tekst)));
   scrollNaarBeneden(true);
 }
@@ -80,6 +82,15 @@ function voetregel(tekst, acties, bron, extra = null) {
 function begroeting(tekst) {
   messages.replaceChildren();
   jarvisBericht({ tekst }, "kort");
+  // Een grote orb in het midden zolang er nog niets gevraagd is (kopie van die bovenin).
+  const groot = orb.cloneNode(true);
+  groot.removeAttribute("id");
+  groot.classList.add("orb-groot");
+  groot.querySelector("defs")?.remove();  // de kleuren (verlopen) staan al in de orb bovenin
+  const tip = !kanLuisteren ? "Typ je vraag hieronder."
+    : spraak.wekwoord ? "Zeg \u201cJarvis, ...\u201d of typ je vraag." : "Typ je vraag of druk op de microfoon.";
+  messages.append(el("div", { class: "idle", "aria-hidden": "true" }, groot,
+    el("p", { class: "label" }, "Stand-by"), el("p", { class: "hint" }, tip)));
 }
 
 // -- een antwoord dat stukje voor stukje binnenkomt -----------------------------------
@@ -451,6 +462,11 @@ function toonModus(s) {
 $("#ctaClose").addEventListener("click", () => {
   $("#aiCta").hidden = true;
   try { sessionStorage.setItem("cta-weg", "1"); } catch {}
+});
+
+// Op de telefoon: bij het openen van het J.A.R.V.I.S.-tabblad naar het nieuwste bericht.
+seintjes.addEventListener("view", (e) => {
+  if (e.detail === "jarvis") scrollNaarBeneden();
 });
 
 seintjes.addEventListener("status", (e) => {

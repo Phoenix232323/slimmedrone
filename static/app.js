@@ -167,11 +167,20 @@ toonFuncties();
 
 // -- meldingen rechtsboven/onder (toasts) -------------------------------------
 
+const kleinScherm = window.matchMedia("(max-width: 720px)");
+
 function toast(tekst, { soort = "info", foto = null, duur = 6000 } = {}) {
+  const box = $("#toasts");
+  if (!box) return;
   const pictogram = { onbekend: "alert", wacht: "eye", fout: "alert", bekend: "face" }[soort] || "info";
   const node = el("div", { class: `toast ${soort}` },
     foto ? el("img", { src: foto, alt: "" }) : icon(pictogram), el("span", {}, tekst));
-  $("#toasts")?.append(node);
+  // Op een telefoon is er weinig ruimte: één melding tegelijk, en korter.
+  if (kleinScherm.matches) {
+    box.replaceChildren();
+    duur = Math.min(duur, 4000);
+  }
+  box.append(node);
   setTimeout(() => node.remove(), duur);
 }
 

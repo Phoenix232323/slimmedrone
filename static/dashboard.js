@@ -162,7 +162,8 @@ function drawSparkline(canvas, values) {
   ctx.stroke();
   ctx.setLineDash([]);
   if (values.length < 2) return;
-  const step = w / 59;
+  // Eerst vullen de punten de breedte (minstens 12 plaatsen), daarna schuift de lijn mee.
+  const step = w / (Math.max(values.length, 12) - 1);
   const x0 = w - (values.length - 1) * step;
   ctx.beginPath();
   values.forEach((v, i) => (i ? ctx.lineTo(x0 + i * step, y(v)) : ctx.moveTo(x0, y(v))));
@@ -329,7 +330,8 @@ function addAlert(alert, nieuw) {
   $("#alertCount").textContent = meldingen.length;
   $("#alertsEmpty").hidden = $("#alerts").children.length > 0;
   if (!nieuw) return;
-  toast(alert.bericht, { soort: alert.soort, foto: alert.foto });
+  // Kijk je op de telefoon al naar de meldingen? Dan geen extra melding bovenin.
+  if (!(mobiel.matches && dash.dataset.view === "meldingen")) toast(alert.bericht, { soort: alert.soort, foto: alert.foto });
   if (spraak.piep) piep(alert.soort);
   if (spraak.meldingen) zeg(alert.bericht);
   if (mobiel.matches && dash.dataset.view !== "meldingen") {
