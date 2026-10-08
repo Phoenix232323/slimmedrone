@@ -91,6 +91,7 @@ class Pipeline:
         self._running = False
         self._options = {"kaders": True, "hud": True}
         self._last_viewer = 0.0      # wanneer iemand voor het laatst om een beeld vroeg
+        self._listeners = []         # krijgen elk getekend beeld, bijv. de recorder (opnemen)
         # Brievenbussen voor de herkenningsthreads, en hun laatste uitkomst.
         self._for_objects = _Latest()
         self._for_faces = _Latest()
@@ -138,6 +139,16 @@ class Pipeline:
                 self._cond.wait(timeout)
             return self._jpeg_id, self._jpeg
 
+    def add_frame_listener(self, listener):
+        """Geef elk getekend beeld (zoals op de website) ook aan listener, bijv. de recorder.
+
+        listener.wanted_fps() zegt hoeveel beelden per seconde hij nu wil (0 = geen); dan
+        maken we er minstens zoveel, ook als niemand naar de livestream kijkt.
+        listener.frame(view, jpeg) krijgt het getekende beeld en de JPEG ervan. Die moet
+        meteen terugkomen (alleen in een wachtrij zetten): de livestream wacht nooit.
+        """
+        self._listeners = self._listeners + [listener]  # in één keer vervangen: de lus leest mee
+
     # -- weergave en statistiek -------------------------------------------------
 
     @property
@@ -177,6 +188,7 @@ class Pipeline:
         last_ai_result = 0.0
         objects_from_camera = False
         last_error = 0.0
+        last_listener_error = 0.0
 
         while self._running:
             # Wacht (zonder steeds te kijken) tot de camera een nieuw beeld heeft.
@@ -214,7 +226,9 @@ class Pipeline:
                 rect = self.zoom.update(detections, w, h)
                 snapshot = Snapshot(frame=frame, detections=detections, faces=faces,
                                     zoom_rect=self.zoom.target_rect(w, h), time=time.time())
-                make_jpeg, next_jpeg = self._jpeg_plan(now, next_jpeg)
+                listeners = self._listeners
+                wanted = max((listener.wanted_fps() for listener in listeners), default=0)
+                make_jpeg, next_jpeg = self._jpeg_plan(now, next_jpeg, wanted)
                 if make_jpeg:
                     view = frame.copy() if rect is None else crop(frame, rect)
                     options = self._options
@@ -222,7 +236,14 @@ class Pipeline:
                         _draw(view, detections, faces, rect, w, h)
                     if options["hud"]:
                         _draw_hud(view, self.zoom.status())
-                    self._publish(view, snapshot)
+                    jpeg = self._publish(view, snapshot)
+                    for listener in listeners:
+                        try:
+                            listener.frame(view, jpeg)
+                        except Exception:  # een fout bij het opnemen mag de livestream niet stoppen
+                            if time.time() - last_listener_error > 10:
+                                log.exception("Fout bij het doorgeven van een beeld aan %s", listener)
+                                last_listener_error = time.time()
                 else:
                     with self._cond:
                         self._snapshot = snapshot
@@ -232,15 +253,19 @@ class Pipeline:
                     last_error = time.time()
                 time.sleep(0.1)
 
-    def _jpeg_plan(self, now, next_jpeg):
+    def _jpeg_plan(self, now, next_jpeg, wanted_fps=0):
         """Moet dit beeld een JPEG worden? Geeft (ja/nee, wanneer de volgende JPEG mag).
 
         Niet vaker dan STREAM_FPS (meer stuurt de website toch niet door), en als niemand
-        kijkt maar 2 per seconde. We rekenen met een vast schema: is één beeld wat later
-        klaar, dan wordt het volgende beeld niet overgeslagen (dat zou haperen).
+        kijkt maar 2 per seconde (of zoveel als de recorder wil: wanted_fps). We rekenen
+        met een vast schema: is één beeld wat later klaar, dan wordt het volgende beeld
+        niet overgeslagen (dat zou haperen).
         """
         if now - self._last_viewer > VIEWER_TIMEOUT:
             interval = IDLE_JPEG_INTERVAL  # niemand kijkt: af en toe is genoeg
+            if wanted_fps:  # maar er wordt wel opgenomen
+                interval = min(interval, 1.0 / min(wanted_fps, max(1, self.cfg.stream_fps)))
+                next_jpeg = min(next_jpeg, now + interval)
         else:
             interval = 1.0 / max(1, self.cfg.stream_fps)
             next_jpeg = min(next_jpeg, now + interval)  # net iemand gaan kijken: meteen beginnen
@@ -302,17 +327,20 @@ class Pipeline:
         return small, scale
 
     def _publish(self, view, snapshot, count=True):
+        """Maak de JPEG voor de website. Geeft de JPEG (bytes), of None als het niet lukte."""
         ok, buf = cv2.imencode(".jpg", view, [cv2.IMWRITE_JPEG_QUALITY, self.cfg.jpeg_quality])
         if not ok:
-            return
+            return None
+        jpeg = buf.tobytes()
         with self._cond:
-            self._jpeg = buf.tobytes()
+            self._jpeg = jpeg
             self._jpeg_id += 1
             self._snapshot = snapshot
             self._size = (view.shape[1], view.shape[0])
             self._cond.notify_all()
         if count:  # het "Geen camerabeeld"-plaatje tellen we niet mee
             self._frames_meter.tick()
+        return jpeg
 
 
 def _scaled(detections, scale):

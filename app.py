@@ -23,9 +23,12 @@ from slimmedrone.auth import UserStore
 from slimmedrone.camera import Camera
 from slimmedrone.config import load_config
 from slimmedrone.faces import FaceEngine
+from slimmedrone.media import Media
 from slimmedrone.objects import ObjectDetector
 from slimmedrone.pipeline import Pipeline
+from slimmedrone.recorder import Recorder
 from slimmedrone.settings import Settings
+from slimmedrone.stats import Statistics
 from slimmedrone.web import create_app
 
 log = logging.getLogger("slimmedrone")
@@ -163,10 +166,15 @@ def main():
     # (wat verscheen/verdween, wachters) en eventueel https voor de microfoon.
     settings = Settings(cfg.data_dir / "instellingen.json", cfg)
     activity = ActivityTracker(pipeline, alerts).start()
+    # Opnemen (krijgt de beelden van de pipeline), foto's/opnames en de statistiek.
+    recorder = Recorder(cfg.data_dir / "opnames", alerts, fps=min(cfg.opname_fps, cfg.stream_fps),
+                        max_minutes=cfg.opname_max_minuten, pipeline=pipeline)
+    media = Media(cfg.data_dir, recorder)
+    stats = Statistics(pipeline, alerts, cfg.data_dir / "statistiek.csv").start() if cfg.statistiek else None
     assistant = Assistant(cfg, pipeline, alerts=alerts, faces=faces, objects=objects,
-                          activity=activity, settings=settings)
+                          activity=activity, settings=settings, recorder=recorder, stats=stats)
     app = create_app(cfg, pipeline, faces, objects, alerts, assistant, users,
-                     settings=settings, activity=activity)
+                     settings=settings, activity=activity, recorder=recorder, media=media, stats=stats)
     tls = https_files(cfg) if cfg.https else None
     if tls:
         app.config["SESSION_COOKIE_SECURE"] = True  # inlogcookie alleen via https

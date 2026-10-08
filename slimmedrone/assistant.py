@@ -5,9 +5,10 @@ hij gebruikt dan Claude. De sleutel vul je in op de pagina Instellingen van de
 website (of als ANTHROPIC_API_KEY in .env). Claude krijgt bij elke vraag het
 actuele camerabeeld plus wat de objecten- en gezichtsherkenning gevonden hebben,
 en kan zelf dingen doen via "tools" (functies die wij hier uitvoeren als Claude
-erom vraagt): in- en uitzoomen, een foto maken, meldingen en activiteit opvragen,
-een wachter instellen ("waarschuw me als er een hond komt"), de Raspberry Pi
-controleren. Met JARVIS_WEB=aan kan hij ook op internet zoeken (weer, nieuws, feiten).
+erom vraagt): in- en uitzoomen, een foto maken, een video-opname starten en stoppen,
+meldingen, activiteit en statistiek opvragen, een wachter instellen ("waarschuw me als
+er een hond komt"), de Raspberry Pi controleren. Met JARVIS_WEB=aan kan hij ook op
+internet zoeken (weer, nieuws, feiten).
 
 Het antwoord komt woord voor woord binnen ("streaming"), net als bij ChatGPT.
 De website krijgt een stroom gebeurtenissen (zie /api/chat/stream in web.py):
@@ -20,6 +21,7 @@ De website krijgt een stroom gebeurtenissen (zie /api/chat/stream in web.py):
 
 Zonder sleutel (of als internet wegvalt) gebruikt hij een lokale versie die veel
 Nederlandse zinnen begrijpt: "wat zie je", "hoe laat is het", "maak een foto",
+"start een opname", "hoeveel mensen waren er het afgelopen uur?",
 "waarschuw me als er een hond komt", "hoe warm is de Pi", ...
 """
 import base64
@@ -39,6 +41,8 @@ import numpy as np
 from . import system
 from .camera import safe_source
 from .labels import LABELS, dutch, dutch_count, find_label
+from .media import save_photo
+from .recorder import RecorderError
 from .zoom import crop, fit_rect
 
 log = logging.getLogger(__name__)
@@ -53,6 +57,8 @@ OFFLINE_PAUSE = 120      # seconden: na een verbindingsfout eerst even lokaal an
 CHAT_IMAGE_WIDTH = 640   # afbeeldingen in de chat worden hooguit zo breed
 DEFAULT_WATCH_MINUTES = 60
 MAX_WATCH_MINUTES = 720
+MAX_RECORD_MINUTES = 180  # (de recorder houdt zich daarnaast aan OPNAME_MAX_MINUTEN)
+DEFAULT_STATS_MINUTES = 60
 
 # Weigert het model iets onterecht, dan probeert de API het automatisch opnieuw
 # met een ander passend model ("fallback").
@@ -85,8 +91,12 @@ De detectielijst kan fouten bevatten. Kijk zelf ook naar het beeld en beschrijf 
 zoom_to_region met een kader op afbeelding 1. Uitzoomen doe je met zoom_out. Na het inzoomen krijg \
 je het ingezoomde beeld te zien; vertel kort wat je daar ziet.
 - take_snapshot als de gebruiker om een foto vraagt.
+- start_recording en stop_recording om een video-opname te starten of te stoppen ("neem dit op", \
+"stop de opname"). Foto's en opnames staan op de pagina Media van de website.
 - get_recent_alerts voor vragen over meldingen of wie er eerder herkend is.
 - get_activity voor vragen over wat er de afgelopen minuten in beeld verscheen of verdween.
+- get_statistics voor vragen over aantallen en drukte in een periode ("hoeveel mensen waren er het \
+afgelopen uur?", "hoe druk was het vandaag?", "hoe lang was de hond in beeld?").
 - list_known_people voor vragen over wie de gezichtsherkenning kent.
 - watch_for, list_watches en cancel_watch voor "waarschuw me als ...", "waar let je op?" en \
 "stop met letten op ...".
@@ -98,7 +108,7 @@ sportuitslagen, openingstijden, of feiten die je niet zeker weet. Noem in je ant
 als die gegeven is, en vraag het anders kort.
 
 # Veiligheid (altijd)
-- Je kunt alleen kijken, zoomen, foto's maken, waarschuwen en informatie opzoeken. Je bestuurt de \
+- Je kunt alleen kijken, zoomen, foto's en video-opnames maken, waarschuwen en informatie opzoeken. Je bestuurt de \
 drone niet en het systeem grijpt nergens in. Vraagt iemand iets anders, leg dat dan vriendelijk uit.
 - Namen van personen haal je alleen uit de lokale gezichtsherkenning. Herken zelf niemand aan het \
 uiterlijk en raad geen identiteit, ook niet van bekende mensen. Een gezicht dat de herkenning \
@@ -194,6 +204,25 @@ TOOLS = [
           {"watch_id": {"type": "integer", "minimum": 1,
                         "description": "Het nummer van de wachter (zie list_watches)."}},
           ["watch_id"]),
+    _tool("start_recording",
+          "Start een video-opname van de weergave zoals het dashboard die toont (met kaders als die "
+          "aan staan). De opname komt op de pagina Media en stopt vanzelf na de ingestelde maximale "
+          "duur. Gebruik dit bij \"start een opname\", \"neem dit op\" of \"film dit\".",
+          {"minutes": {"type": "integer", "minimum": 1, "maximum": MAX_RECORD_MINUTES,
+                       "description": "Na hoeveel minuten de opname vanzelf stopt (standaard de "
+                                      "ingestelde maximale duur; langer dan die kan niet)."}}),
+    _tool("stop_recording",
+          "Stop de video-opname die loopt en sla hem op. Gebruik dit bij \"stop de opname\" of "
+          "\"stop met opnemen\"."),
+    _tool("get_statistics",
+          "Geeft statistiek over een periode: hoeveel personen er hoogstens tegelijk in beeld waren, "
+          "hoeveel meldingen er kwamen (en hoeveel onbekende gezichten), welke bekende personen er "
+          "waren en welke objecten het langst in beeld waren. Gebruik dit bij vragen als \"hoeveel "
+          "mensen waren er het afgelopen uur?\", \"hoe druk was het vandaag?\" of \"hoe lang was de "
+          "hond in beeld?\".",
+          {"minutes": {"type": "integer", "minimum": 1, "maximum": 1440,
+                       "description": f"Hoeveel minuten terug (standaard {DEFAULT_STATS_MINUTES}; "
+                                      "1440 = de afgelopen 24 uur)."}}),
     _tool("get_system_status",
           "Geeft de toestand van het systeem: camera, beelden per seconde, herkenning, Raspberry Pi "
           "(CPU-temperatuur, belasting, geheugen), hoe lang het grondstation draait en welke AI "
@@ -215,6 +244,9 @@ TOOL_STATUS = {
     "list_watches": "Ik kijk welke wachters er aan staan…",
     "cancel_watch": "Ik stop de wachter…",
     "get_system_status": "Ik controleer het systeem…",
+    "start_recording": "Ik start de opname…",
+    "stop_recording": "Ik stop de opname…",
+    "get_statistics": "Ik bekijk de statistiek…",
 }
 SERVER_TOOL_STATUS = {"web_search": "Ik zoek op internet…", "web_fetch": "Ik lees een webpagina…"}
 
@@ -231,12 +263,14 @@ class ToolResult:
 
 class Assistant:
     def __init__(self, cfg, pipeline, alerts=None, faces=None, objects=None, activity=None,
-                 settings=None):
+                 settings=None, recorder=None, stats=None):
         self.pipeline = pipeline
         self.alerts = alerts
         self.faces = faces
         self.objects = objects
         self.activity = activity
+        self.recorder = recorder        # video-opnames (recorder.py), of None
+        self.stats = stats              # statistiek (stats.py), of None
         self.photos_dir = cfg.data_dir / "fotos"
         self.allowed = cfg.ai_enabled   # JARVIS_AI=uit: nooit Claude
         self.city = cfg.jarvis_city
@@ -607,6 +641,9 @@ class Assistant:
         watches = self.activity.watches() if self.activity else []
         if watches:
             lines += ["", "Actieve wachters: " + ", ".join(f"#{w['id']} {w['omschrijving']}" for w in watches)]
+        if self.recorder is not None and self.recorder.active:
+            rec = self.recorder.status()
+            lines += ["", f"Video-opname: loopt sinds {_clock(rec['sinds'], seconds=False)}"]
         return "\n".join(lines)
 
     def _explain_error(self, exc, model) -> tuple[str, bool]:
@@ -731,21 +768,14 @@ class Assistant:
             image = None if jpeg is None else cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
         if image is None:
             return ToolResult("Er is geen camerabeeld om een foto van te maken.", fout=True)
-        self.photos_dir.mkdir(parents=True, exist_ok=True)
-        stamp = time.strftime("%Y%m%d_%H%M%S")
-        path = self.photos_dir / f"foto_{stamp}.jpg"
-        n = 2
-        while path.exists():  # twee foto's in dezelfde seconde
-            path = self.photos_dir / f"foto_{stamp}_{n}.jpg"
-            n += 1
-        if jpeg is not None:
-            path.write_bytes(jpeg)
-        elif not cv2.imwrite(str(path), image, [cv2.IMWRITE_JPEG_QUALITY, 92]):
+        try:  # zelfde map en namen als de knop Foto op de website
+            path = save_photo(self.photos_dir, jpeg=jpeg, image=image)
+        except OSError:
+            log.exception("Foto opslaan mislukte")
             return ToolResult("De foto kon niet worden opgeslagen.", fout=True)
-        log.info("Foto opgeslagen: %s", path)
         return ToolResult(f"Foto gemaakt en opgeslagen als {path.name} in de map {self.photos_dir}. "
-                          "Hij staat ook in de chat.", actie=f"foto: {path.name}", beeld=image,
-                          titel=f"Foto {time.strftime('%H:%M:%S')}")
+                          "Hij staat ook in de chat en op de pagina Media.", actie=f"foto: {path.name}",
+                          beeld=image, titel=f"Foto {time.strftime('%H:%M:%S')}")
 
     def _tool_get_recent_alerts(self, args, snap, user):
         limit = args.get("limit", 10)
@@ -838,6 +868,64 @@ class Assistant:
         return ToolResult(f"Wachter #{watch.id} ({watch.omschrijving}) is gestopt.",
                           actie=f"wachter gestopt: {watch.omschrijving}")
 
+    def _tool_start_recording(self, args, snap, user):
+        if self.recorder is None:
+            return ToolResult("Opnemen is niet beschikbaar.", fout=True)
+        if self.recorder.active:
+            status = self.recorder.status()
+            return ToolResult(f"Er loopt al een opname, sinds {_clock(status['sinds'], seconds=False)} "
+                              f"({status['bestand']}).")
+        wanted = args.get("minutes")
+        try:
+            status = self.recorder.start(max_minutes=wanted, user=user)
+        except RecorderError as exc:
+            return ToolResult(str(exc), fout=True)
+        limit = status["max_minuten"]
+        text = (f"De opname is gestart ({status['bestand']}). Hij stopt vanzelf na {limit} "
+                f"minu{'ut' if limit == 1 else 'ten'}, of eerder als je zegt dat ik moet stoppen.")
+        if wanted and wanted > limit:
+            text += f" Langer dan {limit} minuten kan niet: dat is de ingestelde grens (OPNAME_MAX_MINUTEN)."
+        return ToolResult(text, actie="opname gestart")
+
+    def _tool_stop_recording(self, args, snap, user):
+        if self.recorder is None:
+            return ToolResult("Opnemen is niet beschikbaar.", fout=True)
+        if not self.recorder.active:
+            return ToolResult("Er loopt geen opname.")
+        status = self.recorder.stop()
+        if status["actief"]:
+            return ToolResult("De opname stopt, maar het opslaan duurt nog even.", actie="opname gestopt")
+        if not status["bestand"]:
+            return ToolResult("De opname is gestopt, maar er kwam geen camerabeeld binnen: er is niets "
+                              "opgeslagen.", actie="opname gestopt")
+        return ToolResult(f"De opname is gestopt en opgeslagen als {status['bestand']} "
+                          f"({_duration_short(status['duur'])}). Je vindt hem op de pagina Media.",
+                          actie=f"opname: {status['bestand']}")
+
+    def _tool_get_statistics(self, args, snap, user):
+        if self.stats is None:
+            return ToolResult("De statistiek wordt niet bijgehouden (STATISTIEK=uit in .env).", fout=True)
+        minutes = args.get("minutes", DEFAULT_STATS_MINUTES)
+        now = time.time()
+        summary = self.stats.summary(minutes * 60, now=now)
+        period = _period_text(minutes)
+        if summary["sinds"] is None:
+            return ToolResult(f"Over {period} heb ik geen gegevens: er was geen camerabeeld, of de "
+                              "statistiek liep toen nog niet.")
+        start = ""
+        if summary["sinds"] > now - minutes * 60 + 120:  # gegevens beginnen later dan de periode
+            start = f" (gegevens vanaf {_clock(summary['sinds'], seconds=False)})"
+        n = summary["max_personen"]
+        lines = [f"Statistiek over {period}{start}:",
+                 f"- Hoogstens {n} {'persoon' if n == 1 else 'personen'} tegelijk in beeld",
+                 f"- Meldingen: {summary['meldingen']}, waarvan {summary['onbekend']} van een onbekend gezicht",
+                 "- Bekende personen gezien: " + (_join(summary["bekende_personen"]) or "niemand")]
+        top = summary["top_objecten"][:5]
+        if top:
+            lines.append("- Het langst in beeld: " + ", ".join(f"{o['naam']} {_nl(o['minuten'])} min"
+                                                                for o in top))
+        return ToolResult("\n".join(lines))
+
     def _tool_get_system_status(self, args, snap, user):
         lines = []
         camera = getattr(self.pipeline, "camera", None)
@@ -870,6 +958,10 @@ class Assistant:
             parts.append(f"geheugen {_nl(status['geheugen'])}% in gebruik")
         lines.append(f"- {device}: " + (", ".join(parts) if parts else "geen meetgegevens beschikbaar"))
         lines.append(f"- Het grondstation draait al {_duration(status['uptime'])}")
+        if self.recorder is not None:
+            rec = self.recorder.status()
+            lines.append(f"- Opname: loopt sinds {_clock(rec['sinds'], seconds=False)} ({rec['bestand']})"
+                         if rec["actief"] else "- Opname: er loopt geen opname")
         info = self.info()
         if info["modus"] == "claude":
             lines.append(f"- J.A.R.V.I.S.: Claude ({info['model']}, effort {info['effort']}, "
@@ -937,7 +1029,34 @@ class Assistant:
                      r"\b(foto|fotootje|plaatje|kiekje)\b.*\b(maken|nemen|schieten)\b|"
                      r"screenshot|snapshot|kiekje|leg (het|dit|dat) vast", q):
             result = run("take_snapshot")
-            return result.tekst if result.fout else "Foto gemaakt. Je vindt hem in de chat en in de map data/fotos."
+            return result.tekst if result.fout else \
+                "Foto gemaakt. Je vindt hem in de chat en op de pagina Media (map data/fotos)."
+
+        # Video-opname. Eerst stoppen: "stop de opname" bevat ook het woord opname.
+        if re.search(r"\b(stop|stoppen|beëindig\w*|klaar met)\b.*\b(opname|opnemen|filmen|video)\b|"
+                     r"\b(niet meer|hou op met|houd op met) (op)?(nemen|filmen)\b", q):
+            return run("stop_recording").tekst
+        if re.search(r"\b(start|begin|maak|neem|starten|beginnen|maken)\b.*\b(opname|video|filmpje)\b|"
+                     r"\b(begin|start) (met )?(op)?nemen\b|\bneem (het |dit |dat |alles )?(even )?op\b|"
+                     r"\b(begin|start) (met )?filmen\b|\bfilm (het|dit|dat|alles)\b", q):
+            minutes = _minutes_in(q, 0)
+            args = {"minutes": max(1, min(MAX_RECORD_MINUTES, minutes))} if minutes else {}
+            return run("start_recording", **args).tekst
+        if re.search(r"\b(neem|nemen) (je|jij|we|wij) (nu )?op\b|loopt (de|er een) opname|"
+                     r"(ben je|zijn we) (aan het )?(op)?nemen", q):
+            rec = self.recorder.status() if self.recorder is not None else None
+            if not rec or not rec["actief"]:
+                return "Nee, er loopt geen opname. Zeg \"start een opname\" als ik moet beginnen."
+            return (f"Ja, ik neem op sinds {_clock(rec['sinds'], seconds=False)} ({rec['bestand']}). "
+                    "Zeg \"stop de opname\" om te stoppen.")
+
+        # Statistiek: "hoeveel mensen waren er het afgelopen uur?" (vóór de activiteit en "hoeveel").
+        if words & {"statistiek", "statistieken", "drukte"} or \
+                re.search(r"\bhoeveel\b.*\b(waren|was|kwamen|geweest|langsgekomen)\b|"
+                          r"\bhoe druk (was|is) het\b|\bhoe lang (was|is|stond)\b.*\bin beeld\b", q):
+            minutes = 1440 if re.search(r"\b(vandaag|dag|etmaal|24 uur)\b", q) else \
+                _minutes_in(q, DEFAULT_STATS_MINUTES)
+            return run("get_statistics", minutes=max(1, min(1440, minutes))).tekst
 
         # Tijd en datum.
         if re.search(r"hoe laat|hoeveel uur is|welke tijd|wat is de tijd|tijd is het", q):
@@ -1269,7 +1388,8 @@ def _check_input(tool, args):
 HELP = """Ik draai nu in de **lokale modus** (zonder Claude). Dit begrijp ik al:
 - **Kijken:** "wat zie je?", "wie is er?", "hoeveel personen?", "zie je een hond?"
 - **Zoomen:** "zoom in op de tafel", "zoom in op Johan", "zoom uit"
-- **Foto:** "maak een foto"
+- **Foto en video:** "maak een foto", "start een opname", "stop de opname"
+- **Statistiek:** "hoeveel mensen waren er het afgelopen uur?", "hoe druk was het vandaag?"
 - **Wachters:** "waarschuw me als er een hond komt", "waar let je op?", "stop met letten op de hond"
 - **Terugkijken:** "laatste meldingen", "wat is er gebeurd?", "wie ken je?"
 - **Systeem:** "hoe laat is het?", "welke dag is het?", "hoe warm is de Pi?"
@@ -1400,6 +1520,25 @@ def _duration(seconds: int) -> str:
     if minutes or not parts:
         parts.append(f"{minutes} minu{'ut' if minutes == 1 else 'ten'}")
     return _join(parts)
+
+
+def _duration_short(seconds: float) -> str:
+    """133.4 -> '2:13 minuten', 42 -> '42 seconden'."""
+    seconds = int(round(seconds))
+    if seconds < 60:
+        return f"{seconds} seconde{'' if seconds == 1 else 'n'}"
+    return f"{seconds // 60}:{seconds % 60:02d} minuten"
+
+
+def _period_text(minutes: int) -> str:
+    """60 -> 'het afgelopen uur', 1440 -> 'de afgelopen 24 uur', 10 -> 'de afgelopen 10 minuten'."""
+    if minutes == 60:
+        return "het afgelopen uur"
+    if minutes % 60 == 0:
+        return f"de afgelopen {minutes // 60} uur"
+    if minutes == 1:
+        return "de afgelopen minuut"
+    return f"de afgelopen {minutes} minuten"
 
 
 def _nl(number) -> str:
