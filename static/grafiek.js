@@ -75,6 +75,14 @@ function verbergTip() {
   if (box) box.hidden = true;
 }
 
+// Het vakje staat vast op het scherm. Bij scrollen hoort het niet meer bij de muis: weg ermee.
+// Staat het toetsenbord op een grafiek, dan zetten we het vakje op de nieuwe plek.
+window.addEventListener("scroll", () => {
+  const actief = document.activeElement;
+  if (actief && actief._toon && actief.dataset.index !== undefined) actief._toon(Number(actief.dataset.index), true);
+  else verbergTip();
+}, { passive: true });
+
 // Het svg-vlak maken (zo breed als het vak, scherp op elk scherm).
 function vlak(box, hoogte) {
   const breedte = Math.max(240, Math.floor(box.clientWidth - parseFloat(getComputedStyle(box).paddingLeft)
@@ -89,6 +97,7 @@ function vlak(box, hoogte) {
 // Pijltjestoetsen op een grafiek: de verticale lijn verschuiven, Esc = weg.
 function toetsenbord(box, aantal, toonIndex) {
   box.tabIndex = 0;
+  box._toon = toonIndex;
   box.onkeydown = (event) => {
     const nu = Number(box.dataset.index ?? aantal - 1);
     let nieuw = null;
@@ -96,13 +105,16 @@ function toetsenbord(box, aantal, toonIndex) {
     if (event.key === "ArrowRight") nieuw = Math.min(aantal - 1, nu + 1);
     if (event.key === "Home") nieuw = 0;
     if (event.key === "End") nieuw = aantal - 1;
-    if (event.key === "Escape") { toonIndex(null); return; }
+    if (event.key === "Escape") { delete box.dataset.index; toonIndex(null); return; }
     if (nieuw === null) return;
     event.preventDefault();
     box.dataset.index = nieuw;
     toonIndex(nieuw, true);
   };
-  box.onblur = () => toonIndex(null);
+  box.onblur = () => {
+    delete box.dataset.index;
+    toonIndex(null);
+  };
 }
 
 // -- lijngrafiek ------------------------------------------------------------------------
@@ -223,10 +235,12 @@ function lijnGrafiek(box, { punten, reeksen, stap, venster, hoogte = 240 }) {
     box.dataset.index = i;
     toonIndex(i);
   });
-  vang.addEventListener("pointerleave", () => toonIndex(null));
+  vang.addEventListener("pointerleave", () => { delete box.dataset.index; toonIndex(null); });
   toetsenbord(box, zichtbaar.length, toonIndex);
 
-  if (!zichtbaar.length) box.append(Object.assign(document.createElement("p"), { className: "chart-empty", textContent: "Nog geen gegevens in deze periode." }));
+  // Niets om te laten zien? Zeg dat er duidelijk bij (een platte lijn op 0 is makkelijk te missen).
+  const leeg = !zichtbaar.length ? "Nog geen gegevens in deze periode." : !max ? "Niemand en niets in beeld in deze periode." : "";
+  if (leeg) box.append(Object.assign(document.createElement("p"), { className: "chart-empty", textContent: leeg }));
 }
 
 // -- gestapelde staven ---------------------------------------------------------------------
@@ -307,7 +321,7 @@ function staafGrafiek(box, { kolommen, soorten, hoogte = 220, leeg = "Geen meldi
     box.dataset.index = i;
     toonIndex(i);
   });
-  vang.addEventListener("pointerleave", () => toonIndex(null));
+  vang.addEventListener("pointerleave", () => { delete box.dataset.index; toonIndex(null); });
   toetsenbord(box, kolommen.length, toonIndex);
 
   if (!max) box.append(Object.assign(document.createElement("p"), { className: "chart-empty", textContent: leeg }));

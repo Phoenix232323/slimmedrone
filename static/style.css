@@ -249,7 +249,7 @@ input[type="range"] { padding: 0; height: var(--h-sm); border: 0; background: tr
 }
 .seg button:hover { color: var(--text); background: var(--surface-2); }
 .seg button[aria-pressed="true"], .seg button[aria-selected="true"] { background: var(--accent-wash); color: var(--accent); }
-.seg-fill { display: flex; width: 100%; }
+.seg-fill { display: flex; width: 100%; max-width: 420px; }
 .seg-count { font: 500 var(--fs-sm)/1 var(--mono); color: var(--text-3); }
 .seg button[aria-selected="true"] .seg-count { color: var(--accent); }
 
@@ -380,7 +380,8 @@ dialog::backdrop { background: rgba(3, 5, 9, .78); }
 .dialog-head h2 { flex: 1; font-size: var(--fs-lg); }
 .dialog-body { padding: var(--s-4); color: var(--text-2); max-width: 52ch; }
 .dialog-foot { display: flex; justify-content: flex-end; gap: var(--s-2); padding: var(--s-3) var(--s-4); border-top: 1px solid var(--border); }
-.dialog > img { display: block; max-width: 100%; max-height: calc(90vh - 64px); margin: 0 auto; }
+/* Foto's van meldingen zijn klein: vergroot ze tot een bruikbare maat. */
+.dialog > img { display: block; width: min(480px, 88vw); max-width: 100%; max-height: calc(90vh - 64px); object-fit: contain; margin: 0 auto; background: #000; }
 dialog.confirm { width: min(440px, 92vw); }
 .keys { display: grid; grid-template-columns: auto 1fr; gap: var(--s-3) var(--s-4); margin: 0; padding: var(--s-4) var(--s-5) var(--s-5); min-width: 300px; }
 .keys dt { text-align: right; }
@@ -570,12 +571,12 @@ a.status-chip:hover { border-color: var(--border-strong); background: var(--surf
 .rec-btn[aria-pressed="true"] .rec-dot { border-radius: 2px; animation: blink 1.2s steps(1) infinite; }
 #recLabel { font-variant-numeric: tabular-nums; }
 
-/* Telemetrie: vakjes die meegroeien; de dunne lijnen ertussen zijn de achtergrond
-   die door de "gap" van 1px heen schijnt. */
-.telemetry { display: flex; flex-wrap: wrap; gap: 1px; background: var(--border); overflow: hidden; }
+/* Telemetrie: één rij vakjes die de breedte delen (het fps-vakje met grafiekje telt dubbel).
+   De dunne lijnen ertussen zijn de achtergrond die door de "gap" van 1px heen schijnt. */
+.telemetry { display: flex; gap: 1px; background: var(--border); overflow: hidden; }
 .tele {
-  flex: 1 1 120px; display: grid; align-content: start; gap: 2px; padding: var(--s-3) var(--s-4);
-  min-width: 0; background: var(--surface);
+  flex: 1 1 0; display: grid; align-content: start; gap: 2px; padding: var(--s-3) var(--s-4);
+  min-width: 0; background: var(--surface); white-space: nowrap;
 }
 .tele-label { font-size: var(--fs-sm); color: var(--text-3); }
 .tele .value { display: flex; align-items: baseline; gap: var(--s-1); }
@@ -585,7 +586,7 @@ a.status-chip:hover { border-color: var(--border-strong); background: var(--surf
 .tele.bad .value b { color: var(--danger); }
 .tele.warn .meter i { background: var(--warn); }
 .tele.bad .meter i { background: var(--danger); }
-.tele-wide { flex: 2 1 240px; grid-template-columns: auto 1fr; column-gap: var(--s-4); }
+.tele-wide { flex: 2 1 0; grid-template-columns: auto 1fr; column-gap: var(--s-4); }
 .tele-wide .tele-label, .tele-wide .value { grid-column: 1; }
 .tele-wide canvas { grid-column: 2; grid-row: 1 / span 2; width: 100%; height: 36px; align-self: center; min-width: 0; }
 
@@ -1006,6 +1007,8 @@ span.thumb { cursor: default; }
   .panels { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "objects faces" "alerts alerts" "activity watchers"; }
   .timeline { max-height: 320px; }
   .toolbar-hint { display: none; }
+  .tele { padding: var(--s-3); }
+  .tele-wide { column-gap: var(--s-3); }
   .settings-grid, .faces-grid { grid-template-columns: minmax(0, 1fr); }
   .settings-side { position: static; }
   .toc { display: none; }
@@ -1051,9 +1054,12 @@ span.thumb { cursor: default; }
   .rec-btn { min-width: 0; }
   .hud-strip { top: var(--s-2); right: var(--s-2); gap: var(--s-2); height: 22px; font-size: var(--fs-xs); padding: 0 6px; }
 
-  .tele { flex-basis: 96px; padding: var(--s-2) var(--s-3); }
+  /* Drie vakjes per rij; het grafiekje past hier niet, de waarde wel. */
+  .telemetry { flex-wrap: wrap; }
+  .tele, .tele-wide { flex: 1 1 calc(33.333% - 1px); padding: var(--s-2) var(--s-3); }
+  .tele-wide { grid-template-columns: 1fr; }
+  .tele-wide canvas { display: none; }
   .tele .value b { font-size: 17px; }
-  .tele-wide { flex-basis: 100%; }
 
   .jarvis-panel {
     position: relative; top: auto; min-height: 0;
