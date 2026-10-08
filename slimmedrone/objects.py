@@ -83,7 +83,14 @@ class ObjectDetector:
     def _start_ai_camera(self, backend, camera, model_path):
         """Probeer de AI Camera (IMX500). Lukt het niet, dan blijft self.backend None."""
         explicit = backend == "imx500"  # zelf gekozen: dan altijd laten weten waarom het niet lukt
-        if camera is None or camera.source.lower() != "picamera":
+        if camera is None:
+            # Geen camera meegegeven (bijv. 'python beheer.py modellen'): dan kunnen we de
+            # AI Camera niet proberen. Dat gebeurt pas als de SlimmeDrone zelf start.
+            if explicit:
+                log.info("De AI Camera wordt gekozen als de SlimmeDrone start. Nu zetten we alleen "
+                         "de objectherkenning op de processor klaar, als reserve.")
+            return
+        if camera.source.lower() != "picamera":
             if explicit:
                 log.warning("OBJECT_BACKEND=imx500 werkt alleen met CAMERA_SOURCE=picamera. "
                             "De objectherkenning draait nu op de processor.")

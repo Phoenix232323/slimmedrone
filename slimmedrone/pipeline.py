@@ -102,6 +102,11 @@ class Pipeline:
         self._faces_meter = FpsMeter()
 
     def start(self) -> "Pipeline":
+        # Oudere .env-bestanden hebben nog STREAM_FPS=20: dan krijgt de website minder beelden dan kan.
+        if self.cfg.stream_fps < self.camera.wanted_fps:
+            log.info("Tip: de website krijgt maximaal %d beelden per seconde (STREAM_FPS), de camera "
+                     "maakt er %d (CAMERA_FPS). Zet in .env STREAM_FPS=%d voor het vloeiendste beeld.",
+                     self.cfg.stream_fps, self.camera.wanted_fps, self.camera.wanted_fps)
         self._running = True
         threading.Thread(target=self._run, name="verwerking", daemon=True).start()
         threading.Thread(target=self._detect_objects, name="objecten", daemon=True).start()
