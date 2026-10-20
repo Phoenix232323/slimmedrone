@@ -1,5 +1,5 @@
 // J.A.R.V.I.S.: chatten (het antwoord komt woord voor woord binnen), voorstellen,
-// spraak (inspreken, wekwoord, voorlezen) en de animatie van de "arc reactor".
+// spraak (inspreken, wekwoord, voorlezen) en de "arc reactor" die laat zien wat hij doet.
 
 const messages = $("#messages");
 const input = $("#chatInput");
@@ -76,7 +76,7 @@ function voetregel(tekst, acties, bron, extra = null) {
     bron ? el("span", { class: "source-tag" }, bron === "claude" ? "via Claude" : "lokaal") : null,
     extra,
     el("button", {
-      class: "icon-btn small", type: "button", title: "Antwoord kopiëren", "aria-label": "Antwoord kopiëren",
+      class: "btn icon ghost sm", type: "button", title: "Antwoord kopiëren", "aria-label": "Antwoord kopiëren",
       onclick: async () => toast(await kopieer(tekst) ? "Antwoord gekopieerd." : "Kopiëren lukte niet."),
     }, icon("copy")));
 }
@@ -84,15 +84,10 @@ function voetregel(tekst, acties, bron, extra = null) {
 function begroeting(tekst) {
   messages.replaceChildren();
   jarvisBericht({ tekst }, "kort");
-  // Een grote orb in het midden zolang er nog niets gevraagd is (kopie van die bovenin).
-  const groot = orb.cloneNode(true);
-  groot.removeAttribute("id");
-  groot.classList.add("orb-groot");
-  groot.querySelector("defs")?.remove();  // de kleurverlopen staan al in de orb bovenin (unieke id's)
-  const tip = !kanLuisteren ? "Typ je vraag hieronder."
-    : spraak.wekwoord ? "Zeg \u201cJarvis, ...\u201d of typ je vraag." : "Typ je vraag of druk op de microfoon.";
-  messages.append(el("div", { class: "idle", "aria-hidden": "true" }, groot,
-    el("p", { class: "label" }, "Stand-by"), el("p", { class: "hint" }, tip)));
+  // Een korte tip zolang er nog niets gevraagd is (verdwijnt bij de eerste vraag).
+  const tip = !kanLuisteren ? "Typ je vraag hieronder of kies een voorbeeld."
+    : spraak.wekwoord ? "Zeg \u201cJarvis, ...\u201d of typ je vraag." : "Typ je vraag, kies een voorbeeld of druk op de microfoon.";
+  messages.append(el("p", { class: "idle idle-hint" }, tip));
 }
 
 // -- een antwoord dat stukje voor stukje binnenkomt -----------------------------------

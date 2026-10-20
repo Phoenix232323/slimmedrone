@@ -22,7 +22,7 @@ async function api(path, { method = "GET", json, form, signal } = {}) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const err = new Error(data.fout || `Fout ${res.status}`);
-    err.status = res.status;  // zodat je bijv. 409 ("nog bezig") apart kunt afhandelen
+    err.status = res.status;  // zodat je bijv. 409 ("nog bezig") of 404 ("bestaat niet") apart kunt afhandelen
     throw err;
   }
   return data;
@@ -56,6 +56,33 @@ function icon(name, extraClass = "") {
 
 function formatTime(seconds) {
   return new Date(seconds * 1000).toLocaleTimeString("nl-NL");
+}
+
+// "8 okt. 2026, 10:04" (vandaag: "vandaag 10:04", gisteren: "gisteren 10:04").
+function formatDatum(seconds) {
+  const d = new Date(seconds * 1000);
+  const tijd = d.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
+  const nu = new Date();
+  const dagen = Math.round((new Date(nu.toDateString()) - new Date(d.toDateString())) / 86400000);
+  if (dagen === 0) return `vandaag ${tijd}`;
+  if (dagen === 1) return `gisteren ${tijd}`;
+  return `${d.toLocaleDateString("nl-NL", { day: "numeric", month: "short", year: "numeric" })}, ${tijd}`;
+}
+
+// 123456 -> "121 kB", 12345678 -> "11,8 MB".
+function formatGrootte(bytes) {
+  if (typeof bytes !== "number" || !isFinite(bytes)) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} kB`;
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 / 1024).toLocaleString("nl-NL", { maximumFractionDigits: 1 })} MB`;
+  return `${(bytes / 1024 ** 3).toLocaleString("nl-NL", { maximumFractionDigits: 1 })} GB`;
+}
+
+// 75 -> "1:15", 3725 -> "1:02:05".
+function formatDuur(seconden) {
+  const s = Math.max(0, Math.floor(seconden || 0));
+  const uur = Math.floor(s / 3600), min = Math.floor((s % 3600) / 60), sec = String(s % 60).padStart(2, "0");
+  return uur ? `${uur}:${String(min).padStart(2, "0")}:${sec}` : `${min}:${sec}`;
 }
 
 // Kleine instellingen die alleen in deze browser bewaard worden (localStorage).
@@ -111,10 +138,21 @@ document.querySelectorAll('img[src^="/video_feed"]').forEach(keepStreamAlive);
 
 // -- welke onderdelen heeft de server? -------------------------------------
 // Nieuwere versies van de server hebben extra onderdelen (instellingen, streaming chat,
-// activiteit, ...). We kijken in /api/status wat er is, zodat de website ook met een
-// oudere server werkt: wat ontbreekt verbergen we gewoon.
+// activiteit, opnemen, media, statistieken, ...). We kijken in /api/status wat er is,
+// zodat de website ook met een oudere server werkt: wat ontbreekt verbergen we gewoon.
 
 const functies = bewaardeFuncties();
+
+// Staat de statistiek op de server uit (STATISTIEK=uit in .env)? Dat merkt pas de pagina
+// Statistieken (statistieken.js). Die onthoudt het hier, zodat de link verdwijnt.
+function statistiekUit(uit) {
+  try {
+    if (uit !== undefined) sessionStorage.setItem("statistiek-uit", uit ? "1" : "");
+    return sessionStorage.getItem("statistiek-uit") === "1";
+  } catch {
+    return false;
+  }
+}
 
 function bewaardeFuncties() {
   try {
@@ -139,6 +177,9 @@ function toonFuncties() {
 
 // Verwerk een antwoord van /api/status: functies bepalen en de bovenbalk bijwerken.
 function leesStatus(s) {
+  // Opnemen, foto's op de server, media en statistieken komen samen in één serverversie.
+  // Het veld "opname" in de status zegt dat die versie er is.
+  const fase2 = !!s.opname && typeof s.opname === "object";
   const nieuw = {
     bekend: true,
     instellingen: "ai_info" in s,
@@ -147,6 +188,10 @@ function leesStatus(s) {
     weergave: !!s.weergave && typeof s.weergave === "object",
     systeem: !!s.systeem,
     prestaties: !!s.prestaties,
+    opname: fase2,
+    fotos: fase2,
+    media: fase2,
+    statistieken: fase2 && !statistiekUit(),
   };
   Object.assign(functies, nieuw);
   try { sessionStorage.setItem("functies", JSON.stringify(nieuw)); } catch {}
@@ -159,7 +204,7 @@ function toonKopStatus(s) {
   if (cam && s.camera) {
     cam.classList.toggle("ok", !!s.camera.verbonden);
     cam.classList.toggle("bad", !s.camera.verbonden);
-    cam.querySelector("b").textContent = s.camera.verbonden ? "Online" : "Los";
+    cam.querySelector("b").textContent = s.camera.verbonden ? "Online" : "Offline";
     cam.title = s.camera.verbonden ? `Camera: ${s.camera.bron}` : `Camera: ${s.camera.fout || "geen verbinding"}`;
   }
   const ai = $("#roAi");
@@ -184,20 +229,22 @@ function geenVerbinding() {
 
 toonFuncties();
 
-// -- meldingen rechtsboven/onder (toasts) -------------------------------------
+// -- korte meldingen linksonder (toasts) ---------------------------------------
 
 const kleinScherm = window.matchMedia("(max-width: 720px)");
 
-function toast(tekst, { soort = "info", foto = null, duur = 6000 } = {}) {
+// actie = { tekst: "Bekijk in Media", href: "/media" }: een link in de melding.
+function toast(tekst, { soort = "info", foto = null, duur = 6000, actie = null } = {}) {
   const box = $("#toasts");
   if (!box) return;
-  const pictogram = { onbekend: "alert", wacht: "eye", fout: "alert", bekend: "face" }[soort] || "info";
+  const pictogram = { onbekend: "alert", wacht: "eye", fout: "alert", bekend: "face", ok: "check" }[soort] || "info";
   const node = el("div", { class: `toast ${soort}` },
-    foto ? el("img", { src: foto, alt: "" }) : icon(pictogram), el("span", {}, tekst));
+    foto ? el("img", { src: foto, alt: "" }) : icon(pictogram), el("span", {}, tekst),
+    actie ? el("a", { class: "toast-action", href: actie.href }, actie.tekst) : null);
   // Op een telefoon is er weinig ruimte: één melding tegelijk, en korter. Anders hoogstens drie.
   if (kleinScherm.matches) {
     box.replaceChildren();
-    duur = Math.min(duur, 4000);
+    duur = Math.min(duur, actie ? 6000 : 4000);
   }
   while (box.children.length >= 3) box.firstChild.remove();
   box.append(node);
@@ -205,6 +252,11 @@ function toast(tekst, { soort = "info", foto = null, duur = 6000 } = {}) {
 }
 
 // -- vensters ------------------------------------------------------------------
+
+function sluitKnop(dialog) {
+  return el("button", { class: "btn icon ghost", type: "button", "aria-label": "Sluiten", title: "Sluiten (Esc)",
+    onclick: () => dialog.close() }, icon("x"));
+}
 
 function venster(id, titel, ...inhoud) {
   let dialog = document.getElementById(id);
@@ -214,11 +266,7 @@ function venster(id, titel, ...inhoud) {
     dialog.addEventListener("click", (event) => { if (event.target === dialog) dialog.close(); });
     document.body.append(dialog);
   }
-  dialog.replaceChildren(
-    el("div", { class: "dialog-head" }, el("h2", {}, titel),
-      el("button", { class: "icon-btn", type: "button", "aria-label": "Sluiten", title: "Sluiten (Esc)",
-        onclick: () => dialog.close() }, icon("x"))),
-    ...inhoud);
+  dialog.replaceChildren(el("div", { class: "dialog-head" }, el("h2", {}, titel), sluitKnop(dialog)), ...inhoud);
   dialog.showModal();
   return dialog;
 }
@@ -228,8 +276,31 @@ function toonFoto(src, titel = "Foto") {
   venster("fotoVenster", titel, el("img", { src, alt: titel }));
 }
 
-// -- kopiëren -------------------------------------------------------------------
+// Vragen of iets echt moet (bijv. verwijderen). Geeft een Promise met true of false.
+// Netter dan confirm() van de browser, en met de knop "Annuleren" als standaard (veilig bij Enter).
+function bevestig({ titel, tekst, knop = "Verwijderen", gevaarlijk = true }) {
+  return new Promise((klaar) => {
+    const dialog = el("dialog", { class: "dialog confirm", role: "alertdialog", "aria-labelledby": "bevestigTitel",
+      "aria-describedby": "bevestigTekst" });
+    const nee = el("button", { class: "btn", type: "button", onclick: () => dialog.close("nee") }, "Annuleren");
+    const ja = el("button", { class: `btn primary${gevaarlijk ? " danger" : ""}`, type: "button",
+      onclick: () => dialog.close("ja") }, knop);
+    dialog.append(
+      el("div", { class: "dialog-head" }, el("h2", { id: "bevestigTitel" }, titel), sluitKnop(dialog)),
+      el("p", { class: "dialog-body", id: "bevestigTekst" }, tekst),
+      el("div", { class: "dialog-foot" }, nee, ja));
+    dialog.addEventListener("click", (event) => { if (event.target === dialog) dialog.close("nee"); });
+    dialog.addEventListener("close", () => {
+      klaar(dialog.returnValue === "ja");
+      dialog.remove();
+    });
+    document.body.append(dialog);
+    dialog.showModal();
+    nee.focus();
+  });
+}
 
+// Tekst naar het klembord kopiëren (bijv. een antwoord van J.A.R.V.I.S.). Geeft true als het lukte.
 async function kopieer(tekst) {
   // navigator.clipboard werkt alleen via https of localhost; anders de oude manier.
   try {
@@ -246,6 +317,50 @@ async function kopieer(tekst) {
   try { ok = document.execCommand("copy"); } catch {}
   area.remove();
   return ok;
+}
+
+// -- menu "Meer" (telefoon) --------------------------------------------------------
+
+const meerMenu = $("#meerMenu");
+if (meerMenu) {
+  $("#meerBtn").addEventListener("click", () => meerMenu.showModal());
+  meerMenu.addEventListener("click", (event) => {
+    if (event.target === meerMenu || event.target.closest("[data-sluit]")) meerMenu.close();
+  });
+}
+
+// -- browsermeldingen (Notification API) ---------------------------------------------
+// Een melding van het besturingssysteem als het tabblad niet zichtbaar is. Werkt alleen
+// via https of op localhost, en alleen als je het zelf aanzet (Instellingen).
+
+function browserMeldingUitleg() {
+  if (!("Notification" in window)) return "Deze browser kan geen meldingen tonen.";
+  if (!window.isSecureContext) {
+    return "Browsermeldingen werken alleen via https of op de Pi zelf (http://localhost). Zet HTTPS=aan in het " +
+      "bestand .env, start de app opnieuw en open de website via https://.";
+  }
+  if (Notification.permission === "denied") {
+    return "Je hebt meldingen voor deze website geblokkeerd. Klik op het slotje naast het adres om ze weer toe te staan.";
+  }
+  return "";
+}
+
+function browserMeldingenAan() {
+  return !!bewaard("browsermeldingen", false) && !browserMeldingUitleg() && Notification.permission === "granted";
+}
+
+function browserMelding(alert) {
+  if (!document.hidden || !browserMeldingenAan()) return;
+  const titel = { onbekend: "Onbekend gezicht", bekend: "Bekend gezicht", wacht: "Wachter", systeem: "Systeem" }[alert.soort]
+    || "SlimmeDrone";
+  try {
+    const n = new Notification(`SlimmeDrone · ${titel}`, {
+      body: alert.bericht, tag: `slimmedrone-${alert.id}`, icon: "/static/icon.svg",
+    });
+    n.onclick = () => { window.focus(); n.close(); };
+  } catch {
+    // Sommige telefoons willen meldingen alleen via een "service worker"; dan slaan we hem over.
+  }
 }
 
 // -- sneltoetsen ------------------------------------------------------------------
@@ -272,6 +387,12 @@ document.addEventListener("keydown", (event) => {
     return;
   }
   if (document.querySelector("dialog[open]")) return;  // een venster is open
+  // Toets ingedrukt houden herhaalt hem. Dat negeren we, anders maakt "s" vasthouden
+  // tientallen foto's en gaat een opname met "r" steeds aan en uit.
+  if (event.repeat) {
+    if (event.key === "?" || sneltoetsen.some((x) => x.toets === event.key.toLowerCase())) event.preventDefault();
+    return;
+  }
   if (event.key === "?") {
     event.preventDefault();
     toonSneltoetsen();

@@ -1,6 +1,6 @@
-// Dashboard: status bijwerken (elke seconde), HUD over het beeld, telemetrie,
-// zoomen, panelen (objecten, gezichten, meldingen, activiteit, wachters) en de
-// tabbladen onderaan op de telefoon. De chat met J.A.R.V.I.S. staat in jarvis.js.
+// Dashboard: status bijwerken (elke seconde), overlay over het beeld, telemetrie,
+// zoomen, opnemen, foto's, panelen (objecten, gezichten, meldingen, activiteit,
+// wachters) en de tabbladen onderaan op de telefoon. De chat staat in jarvis.js.
 
 const dash = $("#inhoud");
 const video = $("#video");
@@ -21,7 +21,7 @@ async function refreshStatus() {
     seintjes.dispatchEvent(new CustomEvent("status", { detail: s }));
   } catch (err) {
     geenVerbinding();
-    setLive(false, "GEEN VERBINDING");
+    zetSignaal("Geen verbinding");
   }
   // Staat het tabblad op de achtergrond? Dan rustiger aan, dat spaart de Pi.
   setTimeout(refreshStatus, document.hidden ? 5000 : 1000);
@@ -32,16 +32,17 @@ function renderStatus(s) {
   const beeldFps = p ? p.beeld_fps : s.fps;
   const unknown = s.gezichten.filter((f) => !f.naam).length;
 
-  // HUD over het beeld
-  setLive(s.camera.verbonden, s.camera.verbonden ? "LIVE" : "GEEN SIGNAAL");
+  // Overlay over het beeld: alleen wat extra toe doet (de server tekent zelf al "LIVE" en de tijd).
+  // Tekent de server de tijd en de zoomtekst niet (meer) in het beeld? Dan tonen wij ze.
+  // Anders staat de zoom alleen onder het beeld (en in het beeld van de server), niet drie keer.
+  const serverTekst = !s.weergave || s.weergave.hud !== false;
+  zetSignaal(s.camera.verbonden ? "" : "Geen signaal");
   $("#hudFps").textContent = fmt(beeldFps);
-  $("#hudZoom").textContent = s.zoom.actief ? `${fmt(s.zoom.factor)}×` : "1.0×";
-  $("#hudObj").textContent = s.objecten.length;
-  $("#hudFaces").textContent = s.gezichten.length;
+  $("#hudZoom").textContent = `${fmt(s.zoom.factor)}×`;
+  $("#hudZoomWrap").hidden = serverTekst || !s.zoom.actief;
   $("#hudUnknown").textContent = unknown;
-  $("#hudUnknown").parentElement.classList.toggle("zero", unknown === 0);
-  // Tekent de server zelf al de tijd in het beeld? Dan laten wij onze klok weg.
-  $("#hudClock").hidden = !s.weergave || s.weergave.hud !== false;
+  $("#hudUnknownWrap").hidden = unknown === 0;
+  $("#hudClock").hidden = serverTekst;
   fitHud();
 
   renderTelemetry(s, beeldFps);
@@ -49,6 +50,8 @@ function renderStatus(s) {
   renderFaces(s);
   renderZoom(s.zoom);
   renderWeergave(s.weergave);
+  renderOpname(s.opname);
+  toonStrook();
   if (Array.isArray(s.wachters)) renderWatchers(s.wachters);
 
   for (const alert of s.meldingen) {
@@ -66,12 +69,23 @@ function fmt(value) {
   return typeof value === "number" && isFinite(value) ? value.toFixed(1) : "--";
 }
 
-// -- HUD over het beeld ----------------------------------------------------------
+// -- overlay over het beeld ---------------------------------------------------------
 
-function setLive(ok, tekst) {
-  const live = $("#hudLive");
-  live.classList.toggle("lost", !ok);
-  live.querySelector("b").textContent = tekst;
+// "Geen signaal" (camera los) of "Geen verbinding" (server onbereikbaar); leeg = alles goed.
+function zetSignaal(tekst) {
+  const state = $("#hudState");
+  state.hidden = !tekst;
+  state.textContent = tekst;
+  toonStrook();
+}
+
+// De strook rechtsboven alleen tonen als er iets in staat. Op de telefoon laat style.css
+// de fps weg (die staat direct onder het beeld), zodat de strook de tijd van de server
+// linksboven in het beeld niet bedekt.
+function toonStrook() {
+  const strook = hud.querySelector(".hud-strip");
+  strook.hidden = false;
+  strook.hidden = ![...strook.children].some((deel) => !deel.hidden && getComputedStyle(deel).display !== "none");
 }
 
 // Het beeld staat in "object-fit: contain": er kunnen zwarte randen zijn.
@@ -84,7 +98,7 @@ function beeldVlak() {
   return { box, left: (box.width - width) / 2, top: (box.height - height) / 2, width, height };
 }
 
-// Leg de HUD precies over het beeld (niet over de zwarte randen).
+// Leg de overlay precies over het beeld (niet over de zwarte randen).
 function fitHud() {
   const v = beeldVlak();
   if (!v.width) return;
@@ -97,11 +111,11 @@ function fitHud() {
 if (window.ResizeObserver) new ResizeObserver(fitHud).observe(videoWrap);
 video.addEventListener("load", fitHud);
 
-// De klok in de HUD.
+// Elke seconde: de klok in de overlay en de looptijd van een opname.
 function tick() {
   $("#hudClock").textContent = new Date().toLocaleTimeString("nl-NL");
+  toonOpnameTijd();
 }
-tick();
 setInterval(tick, 1000);
 
 // -- telemetrie ------------------------------------------------------------------
@@ -140,6 +154,9 @@ function setTele(naam, value, id, opties = {}) {
   }
 }
 
+// Kleuren uit style.css (zodat de grafiekjes bij de rest van de site passen).
+const kleur = (naam) => getComputedStyle(document.documentElement).getPropertyValue(naam).trim();
+
 // Kleine lijngrafiek van de fps (één keer per seconde opnieuw getekend).
 function drawSparkline(canvas, values) {
   const dpr = window.devicePixelRatio || 1;
@@ -152,29 +169,31 @@ function drawSparkline(canvas, values) {
   ctx.clearRect(0, 0, w, h);
   const max = Math.max(31, ...values);
   const y = (v) => h - 2 - (v / max) * (h - 4);
-  // Stippellijn op 30 fps
-  ctx.strokeStyle = "rgba(143, 163, 188, .3)";
-  ctx.setLineDash([2, 3]);
+  // Dunne doorgetrokken lijn op 30 fps (het maximum van de AI Camera).
+  ctx.strokeStyle = kleur("--viz-axis") || "#2a394c";
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(0, Math.round(y(30)) + .5);
   ctx.lineTo(w, Math.round(y(30)) + .5);
   ctx.stroke();
-  ctx.setLineDash([]);
   if (values.length < 2) return;
   // Eerst vullen de punten de breedte (minstens 12 plaatsen), daarna schuift de lijn mee.
   const step = w / (Math.max(values.length, 12) - 1);
   const x0 = w - (values.length - 1) * step;
+  const lijn = kleur("--viz-1") || "#1ba8b5";
   ctx.beginPath();
   values.forEach((v, i) => (i ? ctx.lineTo(x0 + i * step, y(v)) : ctx.moveTo(x0, y(v))));
-  ctx.strokeStyle = "#22d3ee";
+  ctx.strokeStyle = lijn;
   ctx.lineWidth = 1.5;
+  ctx.lineJoin = "round";
   ctx.stroke();
   ctx.lineTo(w, h);
   ctx.lineTo(x0, h);
   ctx.closePath();
-  ctx.fillStyle = "rgba(34, 211, 238, .1)";
+  ctx.globalAlpha = .12;
+  ctx.fillStyle = lijn;
   ctx.fill();
+  ctx.globalAlpha = 1;
 }
 
 // -- objecten en gezichten ---------------------------------------------------------
@@ -202,7 +221,7 @@ function renderObjects(s) {
 
 function renderFaces(s) {
   $("#faces").replaceChildren(...s.gezichten.map((f) => el("li", { class: f.naam ? "" : "unknown" },
-    f.naam || "Onbekend", el("small", {}, f.overeenkomst.toFixed(2)))));
+    f.naam || "Onbekend", el("small", { title: "Hoe goed het gezicht lijkt (0 tot 1)" }, f.overeenkomst.toFixed(2)))));
   $("#faceCount").textContent = s.gezichten.length;
   $("#facesEmpty").hidden = s.gezichten.length > 0;
 }
@@ -222,13 +241,14 @@ function renderZoom(z) {
   const tekst = z.actief ? `Zoom ${fmt(z.factor)}× · ${z.naam}` : "Volledig beeld";
   if (state.textContent !== tekst) state.textContent = tekst;
   state.classList.toggle("active", z.actief);
+  $("#zoomHint").textContent = z.actief ? "Druk op z om uit te zoomen" : "Klik in het beeld om in te zoomen";
   $("#zoomOut").disabled = !z.actief;
 }
 
 $("#zoomOut").addEventListener("click", () => zoom({ actie: "uit" }));
 $("#zoomIn").addEventListener("click", () => zoom({ actie: "punt", x: 0.5, y: 0.5 }));
 
-// Klik in het beeld: zoom 2x in rond dat punt. De HUD laat klikken door,
+// Klik in het beeld: zoom 2x in rond dat punt. De overlay laat klikken door,
 // en we houden rekening met de zwarte randen van "object-fit: contain".
 video.addEventListener("click", (event) => {
   const v = beeldVlak();
@@ -241,6 +261,118 @@ video.addEventListener("click", (event) => {
   setTimeout(() => ping.remove(), 600);
   zoom({ actie: "punt", x: Number(x.toFixed(4)), y: Number(y.toFixed(4)) });
 });
+
+// -- opnemen ---------------------------------------------------------------------
+// De server neemt op wat je hier ziet (met kaders/tekst als die aan staan) en stopt
+// vanzelf na een paar minuten of als de schijf bijna vol is.
+
+const recBtn = $("#recBtn");
+let opname = null;          // laatste opname-status van de server
+let opnameOntvangen = 0;    // wanneer we die kregen (om de looptijd zelf door te tellen)
+let opnameBezig = false;    // wacht nog op de server na een klik
+let systeemStilTot = 0;     // eigen melding getoond: de "systeem"-melding van de server even niet
+
+function renderOpname(o) {
+  if (!o || typeof o !== "object" || opnameBezig) return;
+  opname = o;
+  opnameOntvangen = Date.now();
+  const aan = !!o.actief;
+  // De knop heet altijd "Opnemen" (ook voor schermlezers); aria-pressed zegt of hij aan staat.
+  recBtn.setAttribute("aria-pressed", String(aan));
+  recBtn.title = aan ? `Opname stoppen (r). Stopt vanzelf na ${o.max_minuten || 10} minuten.` : "Opname starten (r)";
+  $("#hudRec").hidden = !aan;
+  $("#recTijd").hidden = !aan;
+  toonOpnameTijd();
+  toonStrook();
+}
+
+function toonOpnameTijd() {
+  const aan = !!(opname && opname.actief);
+  const tijd = aan ? formatDuur((opname.duur || 0) + (Date.now() - opnameOntvangen) / 1000) : "";
+  $("#recTijd").textContent = tijd;
+  $("#hudRecTijd").textContent = tijd;
+}
+
+// Na Stop: alleen "opgeslagen" zeggen als de server dat bestand echt bewaarde.
+// naam = het bestand van de opname die liep (zoals de server het eerder meldde).
+function meldGestopt(o, naam) {
+  if (o.fout) {
+    toast(`Opname gestopt: ${o.fout}`, { soort: "fout", duur: 9000 });
+  } else if (o.bestand && (!naam || o.bestand === naam)) {
+    systeemStilTot = Date.now() + 5000;  // de "systeem"-melding van de server zegt hetzelfde
+    toast("Opname opgeslagen.", { soort: "ok", actie: { tekst: "Bekijk in Media", href: "/media#opnames" } });
+  } else if (o.bestand) {
+    // De server meldt nog de vorige opname: deze wordt nog weggeschreven (of dat mislukte;
+    // dan komt de reden als melding van de server).
+    toast("Opname gestopt. Het opslaan duurt nog even.", { actie: { tekst: "Bekijk in Media", href: "/media#opnames" } });
+  } else {
+    // Geen bestand: de reden (bijv. geen camerabeeld) komt als melding van de server.
+    toast("Opname gestopt, maar er is niets opgeslagen.", { soort: "fout", duur: 9000 });
+  }
+}
+
+async function wisselOpname() {
+  if (opnameBezig || !functies.opname) return;
+  const starten = !(opname && opname.actief);
+  const naam = starten ? null : opname.bestand;
+  opnameBezig = true;
+  recBtn.disabled = true;
+  try {
+    const o = await api("/api/opname", { method: "POST", json: { actie: starten ? "start" : "stop" } });
+    opnameBezig = false;
+    renderOpname(o);
+    if (!starten) {
+      meldGestopt(o, naam);
+    } else if (o.actief) {
+      systeemStilTot = Date.now() + 5000;
+      toast(`Opname gestart. Hij stopt vanzelf na ${o.max_minuten || 10} minuten.`, { soort: "ok" });
+    } else {
+      toast(o.fout ? `Opnemen lukte niet: ${o.fout}` : "De opname is niet gestart.", { soort: "fout", duur: 9000 });
+    }
+  } catch (err) {
+    if (err.status === 404) {
+      functies.opname = false;  // deze server kan (nog) niet opnemen
+      toonFuncties();
+    } else {
+      toast(`Opnemen lukte niet: ${err.message}`, { soort: "fout", duur: 9000 });
+    }
+  } finally {
+    opnameBezig = false;
+    recBtn.disabled = false;
+  }
+}
+
+recBtn.addEventListener("click", wisselOpname);
+
+// -- foto's ------------------------------------------------------------------------
+// Nieuwere server: de foto wordt op de Pi bewaard (zie Media). Oudere server: de foto
+// wordt meteen gedownload. Het downloadknopje ernaast downloadt altijd naar dit apparaat.
+
+const photoBtn = $("#photoBtn");
+
+async function maakFoto() {
+  if (!functies.fotos) {
+    $("#snapshotBtn").click();
+    return;
+  }
+  photoBtn.disabled = true;
+  try {
+    await api("/api/fotos", { method: "POST", json: { kaders: true } });
+    toast("Foto opgeslagen.", { soort: "ok", actie: { tekst: "Bekijk in Media", href: "/media" } });
+  } catch (err) {
+    if (err.status === 404) {
+      functies.fotos = false;
+      toonFuncties();
+      $("#snapshotBtn").click();
+    } else {
+      toast(`Foto maken lukte niet: ${err.message}`, { soort: "fout" });
+    }
+  } finally {
+    photoBtn.disabled = false;
+  }
+}
+
+photoBtn.addEventListener("click", maakFoto);
 
 // -- knoppen onder het beeld ---------------------------------------------------------
 
@@ -278,7 +410,7 @@ async function zetWeergave(naam, knop) {
 $("#toggleKaders").addEventListener("click", (e) => zetWeergave("kaders", e.currentTarget));
 $("#toggleTekst").addEventListener("click", (e) => zetWeergave("hud", e.currentTarget));
 
-// De HUD-overlay zelf staat in de browser aan/uit (alleen voor jou).
+// De overlay zelf staat in de browser aan/uit (alleen voor jou).
 function zetOverlay(aan) {
   hud.classList.toggle("off", !aan);
   $("#toggleOverlay").setAttribute("aria-pressed", String(aan));
@@ -311,13 +443,16 @@ function alertItem(a) {
       el("time", { datetime: new Date(a.tijd * 1000).toISOString() }, formatTime(a.tijd))));
 }
 
+function zetLeegTekst(tekst) {
+  $("#alertsEmpty p").textContent = tekst;
+}
+
 function renderAlerts() {
   const zichtbaar = meldingen.filter(past);
   $("#alerts").replaceChildren(...zichtbaar.map(alertItem));
   $("#alertCount").textContent = meldingen.length;
-  const empty = $("#alertsEmpty");
-  empty.hidden = zichtbaar.length > 0;
-  empty.textContent = meldingen.length ? "Geen meldingen in deze categorie." : "Nog geen meldingen.";
+  $("#alertsEmpty").hidden = zichtbaar.length > 0;
+  zetLeegTekst(meldingen.length ? "Geen meldingen in deze categorie." : "Nog geen meldingen.");
 }
 
 function addAlert(alert, nieuw) {
@@ -329,9 +464,15 @@ function addAlert(alert, nieuw) {
   }
   $("#alertCount").textContent = meldingen.length;
   $("#alertsEmpty").hidden = $("#alerts").children.length > 0;
+  if (!$("#alertsEmpty").hidden) zetLeegTekst("Geen meldingen in deze categorie.");
   if (!nieuw) return;
-  // Kijk je op de telefoon al naar de meldingen? Dan geen extra melding bovenin.
-  if (!(mobiel.matches && dash.dataset.view === "meldingen")) toast(alert.bericht, { soort: alert.soort, foto: alert.foto });
+  browserMelding(alert);  // app.js: alleen als het tabblad verborgen is en het aan staat
+  // Net zelf een opname gestart of gestopt? Dan hebben we daar al een melding voor getoond.
+  const eigen = alert.soort === "systeem" && Date.now() < systeemStilTot;
+  // Kijk je op de telefoon al naar de meldingen? Dan geen extra melding in beeld.
+  if (!eigen && !(mobiel.matches && dash.dataset.view === "meldingen")) {
+    toast(alert.bericht, { soort: alert.soort, foto: alert.foto });
+  }
   if (spraak.piep) piep(alert.soort);
   if (spraak.meldingen) zeg(alert.bericht);
   if (mobiel.matches && dash.dataset.view !== "meldingen") {
@@ -398,7 +539,7 @@ function renderWatchers(wachters) {
     icon("eye"),
     el("span", { class: "what" }, w.omschrijving, el("small", {}, nogTijd(w.tot))),
     el("button", {
-      class: "icon-btn small", type: "button", title: "Wachter stoppen",
+      class: "btn icon ghost sm", type: "button", title: "Wachter stoppen",
       "aria-label": `Wachter "${w.omschrijving}" stoppen`, onclick: () => stopWatcher(w),
     }, icon("x")),
   )));
@@ -427,9 +568,14 @@ async function stopWatcher(w) {
 
 // -- tabbladen op de telefoon ----------------------------------------------------------
 
-const VIEWS = ["live", "jarvis", "meldingen", "meer"];
+const VIEWS = ["live", "jarvis", "meldingen"];
 
 function toonView(view) {
+  if (view === "meer") {
+    // Oude link naar "#meer": open het menu en blijf op Live.
+    $("#meerMenu")?.showModal();
+    view = "live";
+  }
   if (!VIEWS.includes(view)) view = "live";
   dash.dataset.view = view;
   document.querySelectorAll("#tabbar a").forEach((a) => {
@@ -470,13 +616,16 @@ function streamBijwerken() {
 }
 
 document.addEventListener("visibilitychange", streamBijwerken);
-mobiel.addEventListener?.("change", () => { streamBijwerken(); fitHud(); });
+mobiel.addEventListener?.("change", () => { streamBijwerken(); fitHud(); toonStrook(); });
 
 // -- sneltoetsen -----------------------------------------------------------------------
 
 sneltoets("f", "Camerabeeld volledig scherm", volledigScherm);
-sneltoets("s", "Foto opslaan", () => $("#snapshotBtn").click());
+sneltoets("s", "Foto maken", maakFoto);
+sneltoets("r", "Opname starten of stoppen", () => { if (functies.opname) wisselOpname(); });
 sneltoets("z", "Zoom uit (volledig beeld)", () => zoom({ actie: "uit" }));
 
+tick();
+toonStrook();
 toonView(location.hash.slice(1) || "live");
 refreshStatus();

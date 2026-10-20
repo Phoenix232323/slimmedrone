@@ -5,64 +5,68 @@
 {% include "_header.html" %}
 <main class="page faces-page" id="inhoud">
   <div class="page-head">
-    <h1>Gezichten</h1>
-    <p>Wie J.A.R.V.I.S. en de meldingen bij naam kennen.</p>
+    <div>
+      <h1>Gezichten</h1>
+      <p>Wie J.A.R.V.I.S. en de meldingen bij naam kennen.</p>
+    </div>
   </div>
 
-  <section class="panel" aria-labelledby="hAdd">
-    <header class="panel-head">
-      <svg class="i" aria-hidden="true"><use href="#i-face-plus"/></svg>
-      <h2 id="hAdd">Gezicht toevoegen</h2>
-    </header>
-    <div class="panel-body">
-      <p class="notice">
-        <svg class="i" aria-hidden="true"><use href="#i-info"/></svg>
-        <span>Voeg alleen gezichten toe van mensen die daar toestemming voor geven.
-        Meer foto's per persoon (verschillende hoeken en licht) maken de herkenning beter.</span>
-      </p>
+  <div class="faces-grid">
+    <section class="panel" aria-labelledby="hAdd">
+      <header class="panel-head">
+        <h2 id="hAdd">Gezicht toevoegen</h2>
+      </header>
+      <div class="panel-body stack">
+        <p class="notice">
+          <svg class="i" aria-hidden="true"><use href="#i-info"/></svg>
+          <span>Voeg alleen gezichten toe van mensen die daar toestemming voor geven.
+          Meer foto's per persoon (verschillende hoeken en licht) maken de herkenning beter.</span>
+        </p>
 
-      <label class="field name-field">
-        <span class="label">Naam</span>
-        <input id="faceName" placeholder="Bijv. Johan" maxlength="40" autocomplete="off">
-      </label>
+        <label class="field name-field">
+          <span class="field-label">Naam</span>
+          <input class="input" id="faceName" placeholder="Bijv. Johan" maxlength="40" autocomplete="off">
+        </label>
 
-      <div class="add-options">
-        <div class="add-option">
-          <h3 class="label">Vanaf de live camera</h3>
-          <div class="mini-video">
-            <img src="/video_feed" alt="Live camerabeeld">
-            <i class="hud-corner tl"></i><i class="hud-corner tr"></i>
-            <i class="hud-corner bl"></i><i class="hud-corner br"></i>
+        <div class="add-options">
+          <div class="add-option">
+            <h3 class="field-label">Vanaf de live camera</h3>
+            <div class="mini-video">
+              <img src="/video_feed" alt="Live camerabeeld">
+            </div>
+            <button type="button" class="btn wide" id="captureBtn">
+              <svg class="i" aria-hidden="true"><use href="#i-camera"/></svg>Foto van het gezicht in beeld</button>
           </div>
-          <button class="btn wide" id="captureBtn">
-            <svg class="i" aria-hidden="true"><use href="#i-camera"/></svg>Neem foto van het gezicht in beeld</button>
+          <div class="add-option">
+            <h3 class="field-label">Foto's uploaden</h3>
+            <label class="dropzone" id="dropzone">
+              <input type="file" id="photoInput" accept="image/*" multiple>
+              <svg class="i" aria-hidden="true"><use href="#i-upload"/></svg>
+              <span><b>Kies foto's</b> of sleep ze hierheen</span>
+              <small id="photoCount">JPG of PNG, één persoon per foto</small>
+            </label>
+            <button type="button" class="btn wide" id="uploadBtn">
+              <svg class="i" aria-hidden="true"><use href="#i-upload"/></svg>Uploaden</button>
+          </div>
         </div>
-        <div class="add-option">
-          <h3 class="label">Foto's uploaden</h3>
-          <label class="dropzone" id="dropzone">
-            <input type="file" id="photoInput" accept="image/*" multiple>
-            <svg class="i" aria-hidden="true"><use href="#i-upload"/></svg>
-            <span><b>Kies foto's</b> of sleep ze hierheen</span>
-            <small id="photoCount">JPG of PNG, één persoon per foto</small>
-          </label>
-          <button class="btn wide" id="uploadBtn">
-            <svg class="i" aria-hidden="true"><use href="#i-upload"/></svg>Uploaden</button>
-        </div>
+        <div class="result" id="result" role="status" hidden></div>
       </div>
-      <div class="result" id="result" role="status" hidden></div>
-    </div>
-  </section>
+    </section>
 
-  <section class="panel" aria-labelledby="hPeople">
-    <header class="panel-head">
-      <svg class="i" aria-hidden="true"><use href="#i-face"/></svg>
-      <h2 id="hPeople">Bekende personen</h2><span class="count" id="peopleCount">0</span>
-    </header>
-    <div class="panel-body">
-      <ul class="people" id="people"></ul>
-      <p class="empty" id="peopleEmpty">Nog niemand toegevoegd.</p>
-    </div>
-  </section>
+    <section class="panel" aria-labelledby="hPeople">
+      <header class="panel-head">
+        <h2 id="hPeople">Bekende personen</h2><span class="count" id="peopleCount">0</span>
+      </header>
+      <ul class="people" id="people">
+        <li class="skeleton-row" aria-hidden="true"><span class="skeleton avatar-sk"></span><span class="skeleton line"></span></li>
+        <li class="skeleton-row" aria-hidden="true"><span class="skeleton avatar-sk"></span><span class="skeleton line"></span></li>
+      </ul>
+      <div class="empty" id="peopleEmpty" hidden>
+        <svg class="i" aria-hidden="true"><use href="#i-face-plus"/></svg>
+        <p>Nog niemand toegevoegd. Vul links een naam in en neem een foto.</p>
+      </div>
+    </section>
+  </div>
 </main>
 <script src="{{ url_for('static', filename='app.js') }}"></script>
 <script src="{{ url_for('static', filename='gezichten.js') }}"></script>

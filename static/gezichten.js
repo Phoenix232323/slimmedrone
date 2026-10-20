@@ -29,21 +29,33 @@ function avatar(name) {
 }
 
 async function loadPeople() {
-  const { personen } = await api("/api/faces");
+  let personen;
+  try {
+    ({ personen } = await api("/api/faces"));
+  } catch (err) {
+    $("#people").replaceChildren();
+    $("#peopleEmpty").hidden = false;
+    $("#peopleEmpty p").textContent = `Laden lukte niet: ${err.message}`;
+    return;
+  }
   const list = $("#people");
   list.replaceChildren(...personen.map((p) => el("li", {},
     avatar(p.naam),
-    el("b", {}, p.naam),
-    el("small", {}, p.fotos === 1 ? "1 foto" : `${p.fotos} foto's`),
-    el("button", { class: "btn small danger", type: "button", "aria-label": `${p.naam} verwijderen`,
-      onclick: () => removePerson(p.naam) }, icon("trash"), "Verwijderen"),
+    el("span", { class: "who" }, el("b", {}, p.naam), el("small", {}, p.fotos === 1 ? "1 foto" : `${p.fotos} foto's`)),
+    el("button", { class: "btn icon ghost danger", type: "button", "aria-label": `${p.naam} verwijderen`,
+      title: `${p.naam} verwijderen`, onclick: () => removePerson(p.naam) }, icon("trash")),
   )));
   $("#peopleCount").textContent = personen.length;
   $("#peopleEmpty").hidden = personen.length > 0;
+  $("#peopleEmpty p").textContent = "Nog niemand toegevoegd. Vul een naam in en neem een foto.";
 }
 
 async function removePerson(name) {
-  if (!confirm(`Alle foto's van ${name} verwijderen?`)) return;
+  const ok = await bevestig({
+    titel: `${name} verwijderen?`,
+    tekst: `Alle foto's van ${name} worden verwijderd. J.A.R.V.I.S. en de meldingen herkennen ${name} daarna niet meer.`,
+  });
+  if (!ok) return;
   try {
     await api(`/api/faces/${encodeURIComponent(name)}`, { method: "DELETE" });
     showResult(`${name} is verwijderd.`, "ok");

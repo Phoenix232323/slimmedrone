@@ -1,40 +1,41 @@
-{# Bovenbalk van elke pagina (na inloggen) + de tabbalk onderaan voor telefoons. #}
+{# Bovenbalk van elke pagina (na inloggen), de tabbalk onderaan voor telefoons
+   en het menu "Meer" (telefoon). Links met data-functie zijn verborgen tot we weten
+   dat de server dat onderdeel heeft (zie app.js); op de pagina zelf blijven ze zichtbaar. #}
 <a class="skip-link" href="#inhoud">Naar de inhoud</a>
 <header class="topbar">
-  <a class="brand" href="/" aria-label="SlimmeDrone grondstation">
+  <a class="brand" href="/" aria-label="SlimmeDrone grondstation, naar Live">
     {% include "_logo.html" %}
-    <span class="brand-text"><b>SlimmeDrone</b><small>Grondstation</small></span>
+    <span class="brand-text">SlimmeDrone<span class="brand-sub">Grondstation</span></span>
   </a>
 
   <nav class="nav" aria-label="Hoofdmenu">
-    <a href="/" {% if page == 'live' %}aria-current="page"{% endif %}>
-      <svg class="i" aria-hidden="true"><use href="#i-live"/></svg>Live</a>
-    <a href="/gezichten" {% if page == 'gezichten' %}aria-current="page"{% endif %}>
-      <svg class="i" aria-hidden="true"><use href="#i-face"/></svg>Gezichten</a>
-    {# Verborgen tot we weten dat de server deze pagina heeft (zie app.js). #}
-    <a href="/instellingen" data-functie="instellingen" {% if page == 'instellingen' %}aria-current="page"{% else %}hidden{% endif %}>
-      <svg class="i" aria-hidden="true"><use href="#i-sliders"/></svg>Instellingen</a>
+    <a href="/" {% if page == 'live' %}aria-current="page"{% endif %}>Live</a>
+    <a href="/media" data-functie="media" {% if page == 'media' %}aria-current="page"{% else %}hidden{% endif %}>Media</a>
+    <a href="/statistieken" data-functie="statistieken" {% if page == 'statistieken' %}aria-current="page"{% else %}hidden{% endif %}>Statistieken</a>
+    <a href="/gezichten" {% if page == 'gezichten' %}aria-current="page"{% endif %}>Gezichten</a>
+    <a href="/instellingen" data-functie="instellingen" {% if page == 'instellingen' %}aria-current="page"{% else %}hidden{% endif %}>Instellingen</a>
   </nav>
 
-  <div class="readouts">
-    <span class="readout" id="roCamera" title="Camera">
-      <i class="dot" aria-hidden="true"></i><span class="label">Cam</span><b>—</b>
+  <div class="topbar-status">
+    <span class="status-chip" id="roCamera" title="Camera">
+      <i class="dot" aria-hidden="true"></i><span class="status-label">Camera</span><b>—</b>
     </span>
-    <a class="readout" id="roAi" href="/instellingen" title="Slimme AI">
-      <span class="label">AI</span><b>—</b>
+    <a class="status-chip" id="roAi" href="/instellingen" title="Slimme AI">
+      <span class="status-label">AI</span><b>—</b>
     </a>
   </div>
 
   <div class="account">
-    <span class="user-name" title="Ingelogd als {{ user }}">{{ user }}</span>
+    <span class="user-name" title="Ingelogd als {{ user }}">
+      <svg class="i" aria-hidden="true"><use href="#i-face"/></svg>{{ user }}</span>
+    <button type="button" class="btn icon ghost" data-hulp aria-label="Sneltoetsen tonen" title="Sneltoetsen (?)">
+      <svg class="i" aria-hidden="true"><use href="#i-keyboard"/></svg>
+    </button>
     <form method="post" action="/logout">
-      <button class="icon-btn" aria-label="Uitloggen" title="Uitloggen">
+      <button class="btn icon ghost" aria-label="Uitloggen" title="Uitloggen">
         <svg class="i" aria-hidden="true"><use href="#i-logout"/></svg>
       </button>
     </form>
-    <button type="button" class="icon-btn" data-hulp aria-label="Sneltoetsen tonen" title="Sneltoetsen (?)">
-      <svg class="i" aria-hidden="true"><use href="#i-keyboard"/></svg>
-    </button>
   </div>
 </header>
 
@@ -43,11 +44,34 @@
     <svg class="i" aria-hidden="true"><use href="#i-live"/></svg><span>Live</span></a>
   <a href="/#jarvis" data-view="jarvis">
     <svg class="i" aria-hidden="true"><use href="#i-jarvis"/></svg><span>J.A.R.V.I.S.</span>
-    <b class="badge" id="badgeJarvis" hidden></b></a>
+    <b class="tab-count" id="badgeJarvis" hidden></b></a>
   <a href="/#meldingen" data-view="meldingen">
     <svg class="i" aria-hidden="true"><use href="#i-bell"/></svg><span>Meldingen</span>
-    <b class="badge" id="badgeMeldingen" hidden></b></a>
-  <a href="/#meer" data-view="meer" {% if page != 'live' %}aria-current="true"{% endif %}>
-    <svg class="i" aria-hidden="true"><use href="#i-more"/></svg><span>Meer</span></a>
+    <b class="tab-count" id="badgeMeldingen" hidden></b></a>
+  <button type="button" id="meerBtn" aria-haspopup="dialog" aria-controls="meerMenu"
+          {% if page != 'live' %}aria-current="true"{% endif %}>
+    <svg class="i" aria-hidden="true"><use href="#i-more"/></svg><span>Meer</span></button>
 </nav>
+
+<dialog class="sheet" id="meerMenu" aria-labelledby="meerTitel">
+  <div class="sheet-head">
+    <h2 id="meerTitel">Meer</h2>
+    <span class="badge">{{ user }}</span>
+    <button type="button" class="btn icon ghost" data-sluit aria-label="Sluiten">
+      <svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+  </div>
+  <nav class="sheet-links" aria-label="Meer pagina's">
+    <a href="/media" data-functie="media" {% if page == 'media' %}aria-current="page"{% else %}hidden{% endif %}>
+      <svg class="i" aria-hidden="true"><use href="#i-image"/></svg>Media<svg class="i end" aria-hidden="true"><use href="#i-chevron-right"/></svg></a>
+    <a href="/statistieken" data-functie="statistieken" {% if page == 'statistieken' %}aria-current="page"{% else %}hidden{% endif %}>
+      <svg class="i" aria-hidden="true"><use href="#i-chart"/></svg>Statistieken<svg class="i end" aria-hidden="true"><use href="#i-chevron-right"/></svg></a>
+    <a href="/gezichten" {% if page == 'gezichten' %}aria-current="page"{% endif %}>
+      <svg class="i" aria-hidden="true"><use href="#i-face"/></svg>Gezichten<svg class="i end" aria-hidden="true"><use href="#i-chevron-right"/></svg></a>
+    <a href="/instellingen" data-functie="instellingen" {% if page == 'instellingen' %}aria-current="page"{% else %}hidden{% endif %}>
+      <svg class="i" aria-hidden="true"><use href="#i-sliders"/></svg>Instellingen<svg class="i end" aria-hidden="true"><use href="#i-chevron-right"/></svg></a>
+    <form method="post" action="/logout">
+      <button><svg class="i" aria-hidden="true"><use href="#i-logout"/></svg>Uitloggen</button>
+    </form>
+  </nav>
+</dialog>
 <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
