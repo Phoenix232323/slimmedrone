@@ -37,18 +37,31 @@ async function laad() {
     const nieuw = await api(`/api/statistiek?periode=${periode === "dag" ? "dag" : "uur"}`);
     if (nummer !== laadNummer) return;  // intussen een andere periode gekozen
     data = nieuw;
+    if (statistiekUit()) {
+      statistiekUit(false);  // staat weer aan: de link mag weer zichtbaar worden
+      functies.statistieken = !!functies.media;
+      toonFuncties();
+    }
     $("#statsError").hidden = true;
     body.hidden = false;
     render();
     $("#statsUpdated").textContent = `Bijgewerkt om ${new Date().toLocaleTimeString("nl-NL")} · elke 10 seconden`;
   } catch (err) {
     if (nummer !== laadNummer) return;
+    // 404: een oudere server zonder statistieken. 409: de statistiek staat uit op de Pi
+    // (STATISTIEK=uit in .env); de server zegt zelf wat er aan de hand is.
     const box = $("#statsError");
     box.hidden = false;
     box.replaceChildren(icon("alert"), el("span", {}, err.status === 404
       ? "Deze versie van de server houdt nog geen statistieken bij. Werk de software op de Raspberry Pi bij."
+      : err.status === 409 ? err.message
       : `Laden lukte niet: ${err.message}. We proberen het zo opnieuw.`));
-    if (err.status === 404) {
+    if (err.status === 409) {
+      statistiekUit(true);  // app.js: de link Statistieken verbergen (behalve op deze pagina)
+      functies.statistieken = false;
+      toonFuncties();
+    }
+    if (err.status === 404 || err.status === 409) {
       body.hidden = true;
       return;
     }

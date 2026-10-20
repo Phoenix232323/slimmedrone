@@ -408,6 +408,8 @@ dialog.lightbox::backdrop { background: rgba(3, 5, 9, .9); }
 .lightbox-nav.prev { left: var(--s-3); }
 .lightbox-nav.next { right: var(--s-3); }
 .lightbox-nav .i { width: 20px; height: 20px; }
+.lightbox-error { display: flex; align-items: center; gap: var(--s-2); max-width: 44ch; color: var(--text-2); font-size: var(--fs-md); }
+.lightbox-error .i { color: var(--warn); flex: none; }
 .player-end { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(4, 6, 10, .55); }
 .player-bar { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-3) var(--s-4); border-top: 1px solid var(--border); }
 .player-time { font: var(--fs-sm) var(--mono); color: var(--text-2); font-variant-numeric: tabular-nums; min-width: 4ch; }
@@ -569,7 +571,7 @@ a.status-chip:hover { border-color: var(--border-strong); background: var(--surf
 .rec-btn[aria-pressed="true"] { background: var(--danger-wash); border-color: var(--danger-line); color: var(--danger); }
 .rec-btn[aria-pressed="true"]:hover:not(:disabled) { background: rgba(242, 107, 111, .18); border-color: var(--danger); }
 .rec-btn[aria-pressed="true"] .rec-dot { border-radius: 2px; animation: blink 1.2s steps(1) infinite; }
-#recLabel { font-variant-numeric: tabular-nums; }
+.rec-tijd { font-variant-numeric: tabular-nums; }
 
 /* Telemetrie: één rij vakjes die de breedte delen (het fps-vakje met grafiekje telt dubbel).
    De dunne lijnen ertussen zijn de achtergrond die door de "gap" van 1px heen schijnt. */
@@ -900,6 +902,7 @@ span.thumb { cursor: default; }
 .you { margin-left: var(--s-2); }
 
 /* -- media ---------------------------------------------------------------------------- */
+.media-panel { min-width: 0; }
 .media-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: var(--gap); }
 .media-card { display: grid; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-3); overflow: hidden; min-width: 0; }
 .media-card:hover { border-color: var(--border-strong); }
@@ -1055,6 +1058,7 @@ span.thumb { cursor: default; }
   .tool-group:last-child { flex-basis: 100%; justify-content: flex-end; padding-left: 0; border-left: 0; border-top: 1px solid var(--border); padding-top: var(--s-2); margin-top: var(--s-1); }
   .rec-btn { min-width: 0; }
   .hud-strip { top: var(--s-2); right: var(--s-2); gap: var(--s-2); height: 22px; font-size: var(--fs-xs); padding: 0 6px; }
+  .hud-fps { display: none; }  /* staat direct onder het beeld; zo blijft de tijd van de server linksboven vrij */
 
   /* Drie vakjes per rij; het grafiekje past hier niet, de waarde wel. */
   .telemetry { flex-wrap: wrap; }

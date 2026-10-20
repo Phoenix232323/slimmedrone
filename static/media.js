@@ -65,7 +65,7 @@ function render() {
     const actief = tab.dataset.soort === soort;
     tab.setAttribute("aria-selected", String(actief));
     tab.tabIndex = actief ? 0 : -1;
-    if (actief) grid.setAttribute("aria-labelledby", tab.id);
+    if (actief) $("#mediaPanel").setAttribute("aria-labelledby", tab.id);
   });
 
   const lijst = media[soort];
@@ -123,9 +123,12 @@ $("#mediaTabs").addEventListener("click", (event) => {
   if (tab) kiesSoort(tab.dataset.soort);
 });
 $("#mediaTabs").addEventListener("keydown", (event) => {
-  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+  // Pijltjes: naar het andere tabblad (er zijn er maar twee). Home = eerste, End = laatste.
+  const nieuw = { ArrowLeft: soort === "fotos" ? "opnames" : "fotos", ArrowRight: soort === "fotos" ? "opnames" : "fotos",
+    Home: "fotos", End: "opnames" }[event.key];
+  if (!nieuw) return;
   event.preventDefault();
-  kiesSoort(soort === "fotos" ? "opnames" : "fotos", true);
+  kiesSoort(nieuw, true);
 });
 $("#mediaRefresh").addEventListener("click", laad);
 
@@ -150,6 +153,8 @@ function toon(index) {
   $("#lbDownload").href = downloadUrl(m);
   $("#lbDownload").setAttribute("download", m.naam);
   lbImg.alt = video ? `Opname van ${formatDatum(m.tijd)}` : `Foto van ${formatDatum(m.tijd)}`;
+  lbImg.hidden = false;
+  $("#lbError").hidden = true;
   const meer = lijst.length > 1;
   $("#lbPrev").hidden = !meer;
   $("#lbNext").hidden = !meer;
@@ -186,11 +191,38 @@ function stopAfspelen() {
   $("#playerEnd").hidden = true;
 }
 
+// Kan de foto of opname niet geladen worden (bestand weg of kapot)? Zeg dat, in plaats van
+// een kapot plaatje en een speler die eindeloos blijft doortellen.
+lbImg.addEventListener("error", () => {
+  if (geopend < 0 || !lbImg.getAttribute("src")) return;  // viewer is dicht
+  const video = soort === "opnames";
+  stopAfspelen();
+  lbImg.removeAttribute("src");
+  lbImg.hidden = true;
+  $("#playerBar").hidden = true;
+  const fout = $("#lbError");
+  fout.replaceChildren(icon("alert"), el("span", {}, video
+    ? "Deze opname kan niet worden afgespeeld. Misschien is het bestand kapot of verwijderd; probeer hem te downloaden."
+    : "Deze foto kan niet worden geladen. Misschien is het bestand verwijderd."));
+  fout.hidden = false;
+});
+
+// De focus op een logische plek zetten als de knop die hem had verdwenen is (na verwijderen):
+// de kaart op dezelfde plek (of de laatste), en als de lijst leeg is het tabblad.
+function focusOpKaart(index) {
+  const knoppen = grid.querySelectorAll(".media-thumb");
+  const doel = knoppen[Math.min(Math.max(0, index), knoppen.length - 1)]
+    || document.querySelector(`#mediaTabs [data-soort="${soort}"]`);
+  doel.focus();
+}
+
 lightbox.addEventListener("close", () => {
   stopAfspelen();
   lbImg.removeAttribute("src");  // stopt ook de stroom van een opname
+  const index = geopend;
   geopend = -1;
   if (terugFocus && document.contains(terugFocus)) terugFocus.focus();
+  else focusOpKaart(index);
 });
 lightbox.addEventListener("keydown", (event) => {
   if (event.target.closest("input, textarea, select")) return;
@@ -224,7 +256,9 @@ async function verwijder(m) {
     render();
     if (lightbox.open) {
       if (lijst.length) toon(Math.min(plek, lijst.length - 1));
-      else lightbox.close();
+      else lightbox.close();  // de focus gaat dan naar het tabblad (zie "close")
+    } else {
+      focusOpKaart(plek);  // de knop die je gebruikte is weg
     }
   } catch (err) {
     toast(`Verwijderen lukte niet: ${err.message}`, { soort: "fout" });

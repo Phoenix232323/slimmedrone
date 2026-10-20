@@ -19,9 +19,9 @@
 
   <div class="filter-row">
     <div class="seg" id="mediaTabs" role="tablist" aria-label="Soort media">
-      <button type="button" role="tab" id="tabFotos" data-soort="fotos" aria-selected="true" aria-controls="mediaGrid">
+      <button type="button" role="tab" id="tabFotos" data-soort="fotos" aria-selected="true" aria-controls="mediaPanel">
         Foto's <span class="seg-count" id="countFotos"></span></button>
-      <button type="button" role="tab" id="tabOpnames" data-soort="opnames" aria-selected="false" aria-controls="mediaGrid" tabindex="-1">
+      <button type="button" role="tab" id="tabOpnames" data-soort="opnames" aria-selected="false" aria-controls="mediaPanel" tabindex="-1">
         Opnames <span class="seg-count" id="countOpnames"></span></button>
     </div>
     <p class="hint" id="mediaSummary" aria-live="polite"></p>
@@ -29,19 +29,22 @@
 
   <p class="notice danger" id="mediaError" role="alert" hidden></p>
 
-  <ul class="media-grid" id="mediaGrid" role="tabpanel" aria-labelledby="tabFotos" aria-busy="true">
-    {% for _ in range(8) %}
-    <li class="media-card skeleton-card" aria-hidden="true"><span class="skeleton thumb-sk"></span>
-      <span class="skeleton line"></span><span class="skeleton line short"></span></li>
-    {% endfor %}
-  </ul>
+  {# Het tabblad-vlak is een <div> om de lijst heen, zodat de lijst gewoon een lijst blijft. #}
+  <div class="media-panel" id="mediaPanel" role="tabpanel" aria-labelledby="tabFotos">
+    <ul class="media-grid" id="mediaGrid" aria-busy="true">
+      {% for _ in range(8) %}
+      <li class="media-card skeleton-card" aria-hidden="true"><span class="skeleton thumb-sk"></span>
+        <span class="skeleton line"></span><span class="skeleton line short"></span></li>
+      {% endfor %}
+    </ul>
 
-  <div class="empty empty-lg" id="mediaEmpty" hidden>
-    <svg class="i" aria-hidden="true"><use href="#i-image"/></svg>
-    <h2 id="mediaEmptyTitle">Nog geen foto's</h2>
-    <p id="mediaEmptyText">Maak een foto met de knop <b>Foto</b> op het Live-scherm, of vraag J.A.R.V.I.S.
-      <q>Maak een foto</q>.</p>
-    <a class="btn" href="/"><svg class="i" aria-hidden="true"><use href="#i-live"/></svg>Naar Live</a>
+    <div class="empty empty-lg" id="mediaEmpty" hidden>
+      <svg class="i" aria-hidden="true"><use href="#i-image"/></svg>
+      <h2 id="mediaEmptyTitle">Nog geen foto's</h2>
+      <p id="mediaEmptyText">Maak een foto met de knop <b>Foto</b> op het Live-scherm, of vraag J.A.R.V.I.S.
+        <q>Maak een foto</q>.</p>
+      <a class="btn" href="/"><svg class="i" aria-hidden="true"><use href="#i-live"/></svg>Naar Live</a>
+    </div>
   </div>
 </main>
 
@@ -63,6 +66,7 @@
     <button type="button" class="btn icon lightbox-nav prev" id="lbPrev" aria-label="Vorige foto (pijl links)" title="Vorige (←)">
       <svg class="i" aria-hidden="true"><use href="#i-chevron-left"/></svg></button>
     <img id="lbImg" alt="">
+    <p class="lightbox-error" id="lbError" role="alert" hidden></p>
     <button type="button" class="btn icon lightbox-nav next" id="lbNext" aria-label="Volgende foto (pijl rechts)" title="Volgende (→)">
       <svg class="i" aria-hidden="true"><use href="#i-chevron-right"/></svg></button>
     {# De speler voor opnames: de server stuurt de opname als MJPEG-stroom, net als het livebeeld. #}

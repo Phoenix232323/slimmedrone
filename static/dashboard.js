@@ -33,13 +33,16 @@ function renderStatus(s) {
   const unknown = s.gezichten.filter((f) => !f.naam).length;
 
   // Overlay over het beeld: alleen wat extra toe doet (de server tekent zelf al "LIVE" en de tijd).
+  // Tekent de server de tijd en de zoomtekst niet (meer) in het beeld? Dan tonen wij ze.
+  // Anders staat de zoom alleen onder het beeld (en in het beeld van de server), niet drie keer.
+  const serverTekst = !s.weergave || s.weergave.hud !== false;
   zetSignaal(s.camera.verbonden ? "" : "Geen signaal");
   $("#hudFps").textContent = fmt(beeldFps);
-  $("#hudZoom").textContent = s.zoom.actief ? `${fmt(s.zoom.factor)}×` : "1.0×";
+  $("#hudZoom").textContent = `${fmt(s.zoom.factor)}×`;
+  $("#hudZoomWrap").hidden = serverTekst || !s.zoom.actief;
   $("#hudUnknown").textContent = unknown;
   $("#hudUnknownWrap").hidden = unknown === 0;
-  // Tekent de server de tijd niet (meer) in het beeld? Dan tonen wij onze eigen klok.
-  $("#hudClock").hidden = !s.weergave || s.weergave.hud !== false;
+  $("#hudClock").hidden = serverTekst;
   fitHud();
 
   renderTelemetry(s, beeldFps);
@@ -48,6 +51,7 @@ function renderStatus(s) {
   renderZoom(s.zoom);
   renderWeergave(s.weergave);
   renderOpname(s.opname);
+  toonStrook();
   if (Array.isArray(s.wachters)) renderWatchers(s.wachters);
 
   for (const alert of s.meldingen) {
@@ -72,6 +76,16 @@ function zetSignaal(tekst) {
   const state = $("#hudState");
   state.hidden = !tekst;
   state.textContent = tekst;
+  toonStrook();
+}
+
+// De strook rechtsboven alleen tonen als er iets in staat. Op de telefoon laat style.css
+// de fps weg (die staat direct onder het beeld), zodat de strook de tijd van de server
+// linksboven in het beeld niet bedekt.
+function toonStrook() {
+  const strook = hud.querySelector(".hud-strip");
+  strook.hidden = false;
+  strook.hidden = ![...strook.children].some((deel) => !deel.hidden && getComputedStyle(deel).display !== "none");
 }
 
 // Het beeld staat in "object-fit: contain": er kunnen zwarte randen zijn.
@@ -263,32 +277,58 @@ function renderOpname(o) {
   opname = o;
   opnameOntvangen = Date.now();
   const aan = !!o.actief;
+  // De knop heet altijd "Opnemen" (ook voor schermlezers); aria-pressed zegt of hij aan staat.
   recBtn.setAttribute("aria-pressed", String(aan));
-  recBtn.setAttribute("aria-label", aan ? "Opname stoppen (r)" : "Opname starten (r)");
   recBtn.title = aan ? `Opname stoppen (r). Stopt vanzelf na ${o.max_minuten || 10} minuten.` : "Opname starten (r)";
   $("#hudRec").hidden = !aan;
+  $("#recTijd").hidden = !aan;
   toonOpnameTijd();
+  toonStrook();
 }
 
 function toonOpnameTijd() {
   const aan = !!(opname && opname.actief);
   const tijd = aan ? formatDuur((opname.duur || 0) + (Date.now() - opnameOntvangen) / 1000) : "";
-  $("#recLabel").textContent = aan ? `Stop · ${tijd}` : "Opnemen";
+  $("#recTijd").textContent = tijd;
   $("#hudRecTijd").textContent = tijd;
+}
+
+// Na Stop: alleen "opgeslagen" zeggen als de server dat bestand echt bewaarde.
+// naam = het bestand van de opname die liep (zoals de server het eerder meldde).
+function meldGestopt(o, naam) {
+  if (o.fout) {
+    toast(`Opname gestopt: ${o.fout}`, { soort: "fout", duur: 9000 });
+  } else if (o.bestand && (!naam || o.bestand === naam)) {
+    systeemStilTot = Date.now() + 5000;  // de "systeem"-melding van de server zegt hetzelfde
+    toast("Opname opgeslagen.", { soort: "ok", actie: { tekst: "Bekijk in Media", href: "/media#opnames" } });
+  } else if (o.bestand) {
+    // De server meldt nog de vorige opname: deze wordt nog weggeschreven (of dat mislukte;
+    // dan komt de reden als melding van de server).
+    toast("Opname gestopt. Het opslaan duurt nog even.", { actie: { tekst: "Bekijk in Media", href: "/media#opnames" } });
+  } else {
+    // Geen bestand: de reden (bijv. geen camerabeeld) komt als melding van de server.
+    toast("Opname gestopt, maar er is niets opgeslagen.", { soort: "fout", duur: 9000 });
+  }
 }
 
 async function wisselOpname() {
   if (opnameBezig || !functies.opname) return;
   const starten = !(opname && opname.actief);
+  const naam = starten ? null : opname.bestand;
   opnameBezig = true;
   recBtn.disabled = true;
   try {
     const o = await api("/api/opname", { method: "POST", json: { actie: starten ? "start" : "stop" } });
-    systeemStilTot = Date.now() + 5000;
     opnameBezig = false;
     renderOpname(o);
-    if (starten) toast(`Opname gestart. Hij stopt vanzelf na ${o.max_minuten || 10} minuten.`, { soort: "ok" });
-    else toast("Opname opgeslagen.", { soort: "ok", actie: { tekst: "Bekijk in Media", href: "/media#opnames" } });
+    if (!starten) {
+      meldGestopt(o, naam);
+    } else if (o.actief) {
+      systeemStilTot = Date.now() + 5000;
+      toast(`Opname gestart. Hij stopt vanzelf na ${o.max_minuten || 10} minuten.`, { soort: "ok" });
+    } else {
+      toast(o.fout ? `Opnemen lukte niet: ${o.fout}` : "De opname is niet gestart.", { soort: "fout", duur: 9000 });
+    }
   } catch (err) {
     if (err.status === 404) {
       functies.opname = false;  // deze server kan (nog) niet opnemen
@@ -576,7 +616,7 @@ function streamBijwerken() {
 }
 
 document.addEventListener("visibilitychange", streamBijwerken);
-mobiel.addEventListener?.("change", () => { streamBijwerken(); fitHud(); });
+mobiel.addEventListener?.("change", () => { streamBijwerken(); fitHud(); toonStrook(); });
 
 // -- sneltoetsen -----------------------------------------------------------------------
 
@@ -586,5 +626,6 @@ sneltoets("r", "Opname starten of stoppen", () => { if (functies.opname) wisselO
 sneltoets("z", "Zoom uit (volledig beeld)", () => zoom({ actie: "uit" }));
 
 tick();
+toonStrook();
 toonView(location.hash.slice(1) || "live");
 refreshStatus();

@@ -143,6 +143,17 @@ document.querySelectorAll('img[src^="/video_feed"]').forEach(keepStreamAlive);
 
 const functies = bewaardeFuncties();
 
+// Staat de statistiek op de server uit (STATISTIEK=uit in .env)? Dat merkt pas de pagina
+// Statistieken (statistieken.js). Die onthoudt het hier, zodat de link verdwijnt.
+function statistiekUit(uit) {
+  try {
+    if (uit !== undefined) sessionStorage.setItem("statistiek-uit", uit ? "1" : "");
+    return sessionStorage.getItem("statistiek-uit") === "1";
+  } catch {
+    return false;
+  }
+}
+
 function bewaardeFuncties() {
   try {
     return { bekend: false, ...JSON.parse(sessionStorage.getItem("functies") || "{}") };
@@ -180,7 +191,7 @@ function leesStatus(s) {
     opname: fase2,
     fotos: fase2,
     media: fase2,
-    statistieken: fase2,
+    statistieken: fase2 && !statistiekUit(),
   };
   Object.assign(functies, nieuw);
   try { sessionStorage.setItem("functies", JSON.stringify(nieuw)); } catch {}
@@ -289,6 +300,25 @@ function bevestig({ titel, tekst, knop = "Verwijderen", gevaarlijk = true }) {
   });
 }
 
+// Tekst naar het klembord kopiëren (bijv. een antwoord van J.A.R.V.I.S.). Geeft true als het lukte.
+async function kopieer(tekst) {
+  // navigator.clipboard werkt alleen via https of localhost; anders de oude manier.
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(tekst);
+      return true;
+    }
+  } catch {}
+  const area = el("textarea", { style: "position:fixed;opacity:0", "aria-hidden": "true" });
+  area.value = tekst;
+  document.body.append(area);
+  area.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch {}
+  area.remove();
+  return ok;
+}
+
 // -- menu "Meer" (telefoon) --------------------------------------------------------
 
 const meerMenu = $("#meerMenu");
@@ -357,6 +387,12 @@ document.addEventListener("keydown", (event) => {
     return;
   }
   if (document.querySelector("dialog[open]")) return;  // een venster is open
+  // Toets ingedrukt houden herhaalt hem. Dat negeren we, anders maakt "s" vasthouden
+  // tientallen foto's en gaat een opname met "r" steeds aan en uit.
+  if (event.repeat) {
+    if (event.key === "?" || sneltoetsen.some((x) => x.toets === event.key.toLowerCase())) event.preventDefault();
+    return;
+  }
   if (event.key === "?") {
     event.preventDefault();
     toonSneltoetsen();

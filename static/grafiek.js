@@ -118,6 +118,18 @@ function toetsenbord(box, aantal, toonIndex) {
 }
 
 // -- lijngrafiek ------------------------------------------------------------------------
+
+// Vanaf hoeveel seconden tussen twee punten is er een gat (de app stond uit)? De punten
+// liggen niet altijd "stap" uit elkaar: na een herstart komt het deel van vóór de herstart
+// uit statistiek.csv (één regel per minuut), daarna volgen blokken van 10 s. Daarom kijken
+// we naar de gewone afstand tussen de punten (de mediaan), en nooit minder dan 90 s.
+function gatGrens(punten, stap) {
+  const afstanden = [];
+  for (let i = 1; i < punten.length; i++) afstanden.push(punten[i].tijd - punten[i - 1].tijd);
+  afstanden.sort((a, b) => a - b);
+  const gewoon = afstanden.length ? afstanden[Math.floor(afstanden.length / 2)] : stap;
+  return Math.max(stap * 3, gewoon * 2, 90);
+}
 // opties: punten [{tijd, ...}], reeksen [{sleutel, naam, klasse, vlak}], stap (s),
 //         venster (s), hoogte, tijdLabel(t) voor de tooltip.
 
@@ -149,11 +161,12 @@ function lijnGrafiek(box, { punten, reeksen, stap, venster, hoogte = 240 }) {
   }
 
   // Stukken lijn: een gat (de app stond uit) breekt de lijn.
+  const zichtbaar = punten.filter((p) => p.tijd >= begin);
+  const grens = gatGrens(zichtbaar, stap);
   const stukken = [];
   let stuk = [];
-  for (const p of punten) {
-    if (p.tijd < begin) continue;
-    if (stuk.length && p.tijd - stuk[stuk.length - 1].tijd > stap * 2.5) {
+  for (const p of zichtbaar) {
+    if (stuk.length && p.tijd - stuk[stuk.length - 1].tijd > grens) {
       stukken.push(stuk);
       stuk = [];
     }
@@ -194,7 +207,6 @@ function lijnGrafiek(box, { punten, reeksen, stap, venster, hoogte = 240 }) {
   const kruis = svg("line", { class: "cross", y1: m.boven, y2: m.boven + ph, visibility: "hidden" });
   const stippen = reeksen.map((r) => svg("circle", { r: 4, class: `dot ${r.klasse}`, visibility: "hidden" }));
   s.append(kruis, ...stippen);
-  const zichtbaar = punten.filter((p) => p.tijd >= begin);
 
   function toonIndex(i, viaToets = false) {
     if (i === null || !zichtbaar[i]) {
@@ -230,7 +242,10 @@ function lijnGrafiek(box, { punten, reeksen, stap, venster, hoogte = 240 }) {
     // Het punt waarvan het blok onder de muis ligt.
     let i = zichtbaar.findIndex((p) => p.tijd > t) - 1;
     if (i < 0) i = zichtbaar[0].tijd > t ? 0 : zichtbaar.length - 1;
-    if (t - zichtbaar[i].tijd > stap * 2.5) return toonIndex(null);  // in een gat
+    // Het blok loopt tot het volgende punt, behalve vóór een gat: dan is het één stap lang.
+    const volgende = zichtbaar[i + 1];
+    const blok = volgende && volgende.tijd - zichtbaar[i].tijd <= grens ? volgende.tijd - zichtbaar[i].tijd : stap;
+    if (t - zichtbaar[i].tijd > Math.max(blok, stap)) return toonIndex(null);  // in een gat
     toonIndex.muisY = event.clientY;
     box.dataset.index = i;
     toonIndex(i);
