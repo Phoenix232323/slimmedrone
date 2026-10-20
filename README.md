@@ -24,7 +24,12 @@ Schoolproject van **Johan** (software & AI), **Jaiden** (hardware & drone) en
   en je kunt hem ook inspreken ("Jarvis, wat zie je?").
 - **Wachters en activiteit**: J.A.R.V.I.S. let voor je op iets en meldt wat er
   verscheen of verdween.
-- **Instellingen op de website**: Claude-sleutel, denkniveau, internet zoeken, spraak.
+- **Opnemen en foto's**: neem video op of maak een foto; alles staat op de pagina
+  **Media**, om af te spelen, te downloaden of te verwijderen.
+- **Statistieken**: grafieken van hoeveel personen en objecten er in beeld waren, en
+  meldingen per uur. Alle meldingen zijn als CSV te downloaden (opent in Excel).
+- **Instellingen op de website**: Claude-sleutel, denkniveau, internet zoeken, spraak,
+  gebruikers toevoegen/verwijderen, je wachtwoord wijzigen en browsermeldingen.
 - **Digitale zoom** die een object blijft volgen; of klik gewoon in het beeld.
 - **Inlogpagina**, zodat niet zomaar iedereen kan meekijken.
 
@@ -212,23 +217,47 @@ python beheer.py gezicht-toevoegen "Johan" foto1.jpg foto2.jpg
 
 ## De website
 
-Er zijn drie pagina's: **Live**, **Gezichten** en **Instellingen**.
+Bovenaan staat het menu: **Live**, **Media**, **Statistieken**, **Gezichten** en
+**Instellingen**. Op een telefoon staat onderaan een tabbalk (Live / J.A.R.V.I.S. /
+Meldingen / Meer); onder Meer vind je de andere pagina's.
 
 - **Live**: het camerabeeld met HUD (klik in het beeld om in te zoomen), knoppen voor
-  zoomen, foto opslaan en volledig scherm, telemetrie (fps, CPU-temperatuur, belasting,
-  geheugen), en panelen voor objecten (klik = inzoomen), gezichten, meldingen (met
-  filter), activiteit en wachters.
-- **Telefoon**: onderaan een tabbalk (Live / J.A.R.V.I.S. / Meldingen / Meer).
-  Je kunt de site op je beginscherm zetten.
-- **Sneltoetsen** op de computer: `?` hulp, `/` typen, `f` volledig scherm, `s` foto,
-  `z` zoom uit, `m` microfoon.
+  zoomen, opnemen, foto en volledig scherm, telemetrie (fps, CPU, geheugen), en panelen
+  voor objecten (klik = inzoomen), gezichten, meldingen (met filter), activiteit en
+  wachters.
+- **Opnemen**: druk op **Opnemen** (of de toets `r`). De knop toont hoe lang de opname
+  loopt en in het beeld staat REC. Nog een keer drukken stopt. Een opname stopt vanzelf
+  na `OPNAME_MAX_MINUTEN` (standaard 10) of als er minder dan 500 MB vrij is. Opnemen
+  kost bijna geen extra rekenkracht: de beelden van de livestream worden hergebruikt.
+  Opnames komen als `.avi` in `data/opnames/` en spelen ook af in VLC.
+- **Foto**: de knop **Foto** (of de toets `s`) bewaart de foto op de Pi in `data/fotos/`;
+  met het pijltje ernaast download je hem meteen naar je eigen apparaat.
+- **Media**: alle foto's en opnames (nieuwste eerst). Klik op een foto om hem groot te
+  zien (pijltjestoetsen, Esc sluit) of op een opname om hem af te spelen. Downloaden en
+  verwijderen kan ook. Rechtsboven zie je hoeveel ruimte er nog vrij is.
+- **Statistieken**: kies het afgelopen uur of de afgelopen 24 uur. Je ziet het hoogste
+  aantal personen tegelijk, meldingen, onbekende gezichten, een grafiek van personen en
+  objecten, meldingen per uur en wat het langst in beeld was. Met **Meldingen (CSV)**
+  download je alle meldingen voor jullie verslag (opent direct in Nederlandse Excel).
+  Elke minuut komt er ook een regel in `data/statistiek.csv`, zodat een herstart de dag
+  niet wist.
+- **Instellingen**: Claude-sleutel en denkniveau, spraak, weergave, **gebruikers**
+  (iemand toevoegen of verwijderen; jezelf of de laatste gebruiker verwijderen kan niet),
+  **je eigen wachtwoord wijzigen**, en **browsermeldingen** (een melding van je computer
+  of telefoon bij een nieuwe melding, ook als je in een ander tabblad zit; werkt alleen
+  via https of op de Pi zelf). Wordt iemand verwijderd of verandert zijn wachtwoord, dan
+  is hij op andere apparaten binnen enkele seconden uitgelogd.
+- **Sneltoetsen** op het Live-scherm: `?` hulp, `/` typen, `f` volledig scherm, `s` foto,
+  `r` opname starten/stoppen, `z` zoom uit, `m` microfoon.
 
 ## J.A.R.V.I.S. (de slimme assistent)
 
 Zonder sleutel werkt een **lokale versie** die veel Nederlandse zinnen begrijpt:
 *wat zie je, wie is er, hoeveel personen, zoom in op de tafel, zoom uit, hoe laat is
 het, hoe warm is de Pi, wat is er gebeurd, wie ken je, maak een foto, waarschuw me als
-er een hond komt, waar let je op*. Zeg "help" voor een overzicht.
+er een hond komt, waar let je op, start een opname, neem 5 minuten op, stop met opnemen,
+hoeveel mensen waren er het afgelopen uur, hoe druk was het vandaag*. Zeg "help" voor een
+overzicht.
 
 Voor de **echte slimme versie** (net zo slim als ChatGPT of Copilot) gebruikt hij
 Claude van Anthropic:
@@ -249,8 +278,9 @@ Wat hij dan kan:
   Met `JARVIS_PLAATS=Utrecht` weet hij voor welke plaats hij het weer zoekt.
 - Zelf in- en uitzoomen en daarna naar het ingezoomde beeld kijken, dus "zoom in op de
   tafel en vertel wat erop ligt" werkt.
-- **Foto's maken** (komen in `data/fotos/`), meldingen en activiteit opvragen ("wat is
-  er de laatste 10 minuten gebeurd?"), de Pi controleren (temperatuur, fps).
+- **Foto's maken en opnemen** (komen op de pagina Media), meldingen, activiteit en
+  statistiek opvragen ("wat is er de laatste 10 minuten gebeurd?", "hoe druk was het
+  vandaag?"), de Pi controleren (temperatuur, fps).
 - **Wachters**: "waarschuw me als er een hond komt", "laat het weten als Johan in beeld
   komt", "let op onbekende gezichten". Standaard een uur; "de komende 10 minuten" kan
   ook. Gaat hij af, dan komt er een melding met een fotootje.
@@ -294,6 +324,9 @@ gezichtsherkenning; hij herkent zelf niemand, en onbekende gezichten blijven onb
 | `JARVIS_WEB` | `aan` | mag J.A.R.V.I.S. op internet zoeken |
 | `JARVIS_PLAATS` | leeg | plaats voor het weer en lokaal nieuws |
 | `JARVIS_AI` | `auto` | `uit` = altijd de lokale versie |
+| `OPNAME_MAX_MINUTEN` | `10` | een opname stopt vanzelf na zoveel minuten |
+| `OPNAME_FPS` | `15` | beelden per seconde in een opname (15 is ongeveer 0,5 GB per 10 minuten) |
+| `STATISTIEK` | `aan` | `uit` = geen statistiek bijhouden |
 | `STREAM_TOKEN` | leeg | wachtwoord voor `pi_stream.py` |
 
 Zie `.env.example` voor alle opties.
@@ -318,21 +351,26 @@ slimmedrone/
   activity.py        wat er verscheen en verdween, wachters
   settings.py        instellingen van de website (o.a. de Claude-sleutel)
   system.py          gezondheid van de Pi (temperatuur, belasting, geheugen)
+  recorder.py        video opnemen
+  media.py           foto's, galerij en opnames afspelen
+  stats.py           statistiek (personen, objecten, meldingen)
   auth.py            gebruikers en wachtwoorden
   web.py             de website en API (Flask)
   labels.py          Nederlandse namen van de 80 objectsoorten
 templates/, static/  HTML, CSS en JavaScript van de website
-data/                gebruikers, gezichten, modellen, meldingen, foto's, instellingen,
-                     certificaat (staat NIET op GitHub)
+data/                gebruikers, gezichten, modellen, meldingen, foto's, opnames,
+                     statistiek, instellingen, certificaat (staat NIET op GitHub)
 ```
 
 ## Privacy en veiligheid
 
 - Voeg alleen gezichten toe van mensen die daar **toestemming** voor geven (AVG).
-- De map `data/` (wachtwoorden, gezichten, meldingen, foto's, de Claude-sleutel in
-  `instellingen.json`) en `.env` staan in `.gitignore` en komen dus **niet** op GitHub.
+- De map `data/` (wachtwoorden, gezichten, meldingen, foto's, opnames, statistiek, de
+  Claude-sleutel in `instellingen.json`) en `.env` staan in `.gitignore` en komen dus **niet** op GitHub.
   De website toont de sleutel nooit meer volledig, alleen de laatste 4 tekens.
-- Wachtwoorden worden alleen als hash opgeslagen. Na 5 foute pogingen moet je 5 minuten wachten.
+- Wachtwoorden worden alleen als hash opgeslagen. Na 5 foute pogingen (inloggen of
+  wachtwoord wijzigen) moet je 5 minuten wachten.
+- Neem alleen mensen op (video/foto) die daar toestemming voor geven.
 - Standaard gebruikt de website gewoon `http`, dus het verkeer is niet versleuteld. Met
   `HTTPS=aan` wel (met een eigen certificaat). Gebruik hem alleen op je eigen
   (wifi-)netwerk en niet via het internet.
