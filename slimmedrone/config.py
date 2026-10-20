@@ -46,6 +46,11 @@ class Config:
 
     https: bool                # website via https (nodig voor de microfoon op telefoon/laptop)
 
+    # Opnames en statistiek
+    opname_max_minuten: int    # een opname stopt vanzelf na zoveel minuten
+    opname_fps: int            # beelden per seconde in een opname (hooguit STREAM_FPS)
+    statistiek: bool           # tijdreeks van personen/objecten bijhouden (data/statistiek.csv)
+
     data_dir: Path
 
     @property
@@ -118,5 +123,8 @@ def load_config() -> Config:
         jarvis_city=env("JARVIS_PLAATS", "").strip(),
         anthropic_api_key=env("ANTHROPIC_API_KEY", "").strip(),
         https=_bool(env("HTTPS", "uit")),
+        opname_max_minuten=max(1, int(env("OPNAME_MAX_MINUTEN", "10"))),
+        opname_fps=max(1, int(env("OPNAME_FPS", "15"))),
+        statistiek=_bool(env("STATISTIEK", "aan")),
         data_dir=Path(env("DATA_DIR", str(ROOT / "data"))).resolve(),
     )

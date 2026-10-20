@@ -1,17 +1,26 @@
 """De website (het grondstation-dashboard), gemaakt met Flask.
 
-Pagina's:    /login, /, /gezichten, /instellingen
+Pagina's:    /login, /, /gezichten, /instellingen, /media, /statistieken
 Livestream:  /video_feed  (MJPEG: een stroom JPEG-beelden, werkt in elke browser)
 API:         /api/...     (JSON, gebruikt door de JavaScript in static/)
 Chat:        /api/chat/stream  (het antwoord van J.A.R.V.I.S. komt woord voor woord
              binnen als "server-sent events": regels "event: ..." en "data: {...}")
+Media:       /api/opname, /api/fotos, /api/media/...  (opnemen, foto's, galerij)
+Overig:      /api/statistiek, /api/meldingen.csv, /api/gebruikers, /api/wachtwoord
 
-Alles behalve /login is alleen te zien als je bent ingelogd.
+Alles behalve /login is alleen te zien als je bent ingelogd. Wordt een gebruiker
+verwijderd of verandert zijn wachtwoord, dan is hij overal meteen uitgelogd.
 """
+import csv
 import functools
+import io
 import json
+import logging
+import secrets
+import struct
 import time
 from datetime import timedelta
+from urllib.parse import urlparse
 
 import cv2
 import numpy as np
@@ -19,17 +28,22 @@ from flask import (Flask, Response, abort, jsonify, redirect, render_template, r
                    send_file, session, stream_with_context, url_for)
 
 from . import system
-from .auth import LoginLimiter
+from .auth import LoginLimiter, check_password
 from .faces import clean_name
 from .assistant import pipeline_stats, safe_source
+from .media import Media, MediaBusy, save_photo
+from .recorder import RecorderError
 from .settings import Settings
 from .zoom import crop
 
+log = logging.getLogger(__name__)
 API_HEADER = "X-SlimmeDrone"  # andere websites kunnen deze header niet meesturen (CSRF-bescherming)
+STREAM_CHECK = 5.0    # seconden: zo vaak kijkt een lopende videostroom of je nog mag kijken
+STAMP_GRACE = 60.0    # seconden: zo lang telt na een eigen wachtwoordwijziging ook het oude stempel
 
 
 def create_app(cfg, pipeline, faces, objects, alerts, assistant, users,
-               settings=None, activity=None) -> Flask:
+               settings=None, activity=None, recorder=None, media=None, stats=None) -> Flask:
     app = Flask(__name__, template_folder="../templates", static_folder="../static")
     app.config.update(
         SECRET_KEY=cfg.secret_key(),
@@ -39,8 +53,15 @@ def create_app(cfg, pipeline, faces, objects, alerts, assistant, users,
         MAX_CONTENT_LENGTH=25 * 1024 * 1024,
     )
     limiter = LoginLimiter()
+    # Wie zijn eigen wachtwoord wijzigt, krijgt een nieuw stempel in zijn cookie. Verzoeken die
+    # op dat moment al onderweg waren (bijv. de status van elke seconde) hebben nog het oude
+    # cookie en zouden hem anders uitloggen. Daarom telt voor precies die sessie (sid) het oude
+    # stempel nog even mee: {sid: (gebruiker, oud stempel, nieuw stempel, tot wanneer)}.
+    stamp_grace = {}
     if settings is None:
         settings = Settings(cfg.data_dir / "instellingen.json", cfg)
+    if media is None:
+        media = Media(cfg.data_dir, recorder)
     # Weergave-opties (kaders, HUD) voor als de pipeline ze zelf (nog) niet kent.
     view_options = {"kaders": True, "hud": True}
 
@@ -49,7 +70,8 @@ def create_app(cfg, pipeline, faces, objects, alerts, assistant, users,
     def login_required(view):
         @functools.wraps(view)
         def wrapper(*args, **kwargs):
-            if "user" not in session:
+            if "user" not in session or not session_valid():
+                session.clear()
                 if request.path.startswith("/api/"):
                     return jsonify(fout="Niet ingelogd"), 401
                 return redirect(url_for("login", next=request.path))
@@ -59,6 +81,50 @@ def create_app(cfg, pipeline, faces, objects, alerts, assistant, users,
             return view(*args, **kwargs)
         return wrapper
 
+    def session_valid() -> bool:
+        """Bestaat de gebruiker nog, en is zijn wachtwoord niet veranderd sinds het inloggen?"""
+        if "stempel" not in session:  # ingelogd met een oudere versie: stempel nu zetten
+            stamp = users.stamp(session["user"])
+            if stamp is None:
+                return False  # gebruiker is verwijderd
+            session["stempel"] = stamp
+        current = current_stamp(session["user"], session.get("sid"), session["stempel"])
+        if current is None:
+            return False
+        if current != session["stempel"]:
+            session["stempel"] = current  # net zelf het wachtwoord gewijzigd: nieuw stempel
+        return True
+
+    def current_stamp(user, sid, stamp):
+        """Het geldige stempel voor deze sessie, of None als hij niet meer mag (verwijderd of
+        ander wachtwoord). Na een eigen wachtwoordwijziging telt het oude stempel nog even."""
+        now_stamp = users.stamp(user)
+        if now_stamp is None:
+            return None  # gebruiker is verwijderd
+        if stamp == now_stamp:
+            return now_stamp
+        grace = stamp_grace.get(sid) if sid else None
+        if grace and grace[:3] == (user, stamp, now_stamp) and time.time() < grace[3]:
+            return now_stamp
+        return None
+
+    def still_allowed():
+        """Voor lange stromen (video): een functie die zegt of deze sessie nog mag kijken.
+
+        Wordt een gebruiker verwijderd of zijn wachtwoord gewijzigd, dan stopt de stroom
+        binnen STREAM_CHECK seconden (anders bleef het camerabeeld gewoon doorlopen)."""
+        user, sid, stamp = session["user"], session.get("sid"), session.get("stempel")
+        checked = time.monotonic()
+
+        def check() -> bool:
+            nonlocal checked, stamp
+            if time.monotonic() - checked < STREAM_CHECK:
+                return True
+            checked = time.monotonic()
+            stamp = current_stamp(user, sid, stamp)
+            return stamp is not None
+        return check
+
     @app.route("/login", methods=["GET", "POST"])
     def login():
         error = None
@@ -66,17 +132,17 @@ def create_app(cfg, pipeline, faces, objects, alerts, assistant, users,
         if request.method == "POST":
             ip = request.remote_addr or "?"
             username = request.form.get("gebruiker", "").strip().lower()[:64]
-            if limiter.blocked(ip):
+            if not limiter.attempt(ip):  # telt de poging meteen mee, ook bij veel tegelijk
                 error = "Te veel mislukte pogingen. Wacht 5 minuten."
             elif users.verify(username, request.form.get("wachtwoord", "")):
                 limiter.succeeded(ip)
                 session.clear()
                 session.permanent = True
                 session["user"] = username
-                target = request.args.get("next", "/")
-                return redirect(target if target.startswith("/") and not target.startswith("//") else "/")
+                session["stempel"] = users.stamp(username)
+                session["sid"] = secrets.token_hex(8)
+                return redirect(_safe_next(request.args.get("next", "/")))
             else:
-                limiter.failed(ip)
                 time.sleep(0.5)
                 error = "Gebruikersnaam of wachtwoord klopt niet."
         return render_template("login.html", error=error, username=username)
@@ -112,14 +178,26 @@ def create_app(cfg, pipeline, faces, objects, alerts, assistant, users,
         return render_template("instellingen.html", user=session["user"], page="instellingen",
                                ai_mode=assistant.mode)
 
+    @app.get("/media")
+    @login_required
+    def media_page():
+        return render_template("media.html", user=session["user"], page="media")
+
+    @app.get("/statistieken")
+    @login_required
+    def statistics_page():
+        return render_template("statistieken.html", user=session["user"], page="statistieken")
+
     # -- livestream ----------------------------------------------------------
 
     @app.get("/video_feed")
     @login_required
     def video_feed():
+        allowed = still_allowed()
+
         def frames():
             last_id, min_interval = -1, 1.0 / max(1, cfg.stream_fps)
-            while True:
+            while allowed():
                 started = time.time()
                 frame_id, jpeg = pipeline.wait_jpeg(last_id, timeout=2.0)
                 if jpeg is None or frame_id == last_id:
@@ -167,6 +245,7 @@ def create_app(cfg, pipeline, faces, objects, alerts, assistant, users,
             weergave=current_view(),
             wachters=activity.watches() if activity else [],
             ai_info=assistant.info(),
+            opname=recording_status(),
         )
 
     def current_view() -> dict:
@@ -307,6 +386,252 @@ def create_app(cfg, pipeline, faces, objects, alerts, assistant, users,
             return jsonify(fout="Deze wachter bestaat niet (meer)."), 404
         return jsonify(ok=True)
 
+    # -- opnemen en foto's ---------------------------------------------------
+
+    def recording_status() -> dict:
+        if recorder is None:
+            return {"actief": False, "sinds": None, "bestand": None, "duur": 0.0,
+                    "max_minuten": getattr(cfg, "opname_max_minuten", 10)}
+        return recorder.status()
+
+    @app.post("/api/opname")
+    @login_required
+    def recording():
+        action = _json_body().get("actie")
+        if action not in ("start", "stop"):
+            return jsonify(fout='Gebruik "actie": "start" of "stop".'), 400
+        if recorder is None:
+            return jsonify(fout="Opnemen is niet beschikbaar."), 409
+        if action == "stop":
+            return jsonify(recorder.stop())  # wacht tot het bestand af is
+        if recorder.active:
+            return jsonify(recorder.status())  # loopt al: niets aan de hand
+        try:
+            return jsonify(recorder.start(user=session["user"]))
+        except RecorderError as exc:
+            return jsonify(fout=str(exc)), 409
+
+    @app.post("/api/fotos")
+    @login_required
+    def take_photo():
+        """Foto op de server: met kaders (wat je op de website ziet) of het schone camerabeeld."""
+        with_boxes = _json_body().get("kaders", True)
+        if not isinstance(with_boxes, bool):
+            return jsonify(fout="Gebruik true of false voor kaders."), 400
+        if pipeline.snapshot().frame is None:  # dan is het laatste beeld "Geen camerabeeld"
+            return jsonify(fout="Er is geen camerabeeld om een foto van te maken."), 409
+        try:
+            if with_boxes:
+                jpeg = pipeline.latest_jpeg()
+                if jpeg is None:
+                    return jsonify(fout="Er is geen camerabeeld om een foto van te maken."), 409
+                path = save_photo(media.photos_dir, jpeg=jpeg)
+            else:
+                path = save_photo(media.photos_dir, image=clean_frame())
+        except OSError as exc:
+            log.error("Foto opslaan mislukte: %s", exc)
+            return jsonify(fout="De foto kon niet worden opgeslagen."), 500
+        return jsonify(naam=path.name, url=f"/api/media/fotos/{path.name}",
+                       mini=f"/api/media/fotos/{path.name}/mini")
+
+    def clean_frame():
+        """Het schone camerabeeld op volle grootte (zonder kaders en zonder zoom)."""
+        camera = getattr(pipeline, "camera", None)
+        read = getattr(camera, "read", None)
+        if camera is not None and camera.connected and callable(read):
+            frame = read()[1]
+            if frame is not None:
+                return frame
+        return pipeline.snapshot().frame
+
+    # -- media (galerij) -------------------------------------------------------
+
+    @app.get("/api/media")
+    @login_required
+    def media_list():
+        return jsonify(media.listing())
+
+    @app.get("/api/media/<soort>/<naam>")
+    @login_required
+    def media_file(soort, naam):
+        path = media.path(soort, naam)  # alleen eigen namen, zonder mappen of ".."
+        if path is None:
+            return jsonify(fout="Dit bestand bestaat niet."), 404
+        if soort == "opnames" and media.busy(naam):
+            return jsonify(fout="Deze opname loopt nog. Stop eerst de opname."), 409
+        return send_file(path, mimetype="image/jpeg" if soort == "fotos" else "video/x-msvideo",
+                         as_attachment=request.args.get("download") == "1", download_name=naam, max_age=0)
+
+    @app.get("/api/media/<soort>/<naam>/mini")
+    @login_required
+    def media_mini(soort, naam):
+        path = media.path(soort, naam)
+        if path is None:
+            return jsonify(fout="Dit bestand bestaat niet."), 404
+        try:
+            jpeg = media.mini(soort, path)
+        except MediaBusy as exc:
+            return jsonify(fout=str(exc)), 409
+        except (OSError, ValueError, struct.error):
+            return jsonify(fout="Van dit bestand kan geen miniatuur worden gemaakt."), 404
+        # Een naam hoort altijd bij hetzelfde bestand: de browser mag de miniatuur bewaren.
+        return Response(jpeg, mimetype="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
+
+    @app.get("/api/media/opnames/<naam>/afspelen")
+    @login_required
+    def media_play(naam):
+        """Speel een opname af als MJPEG-stroom (net als /video_feed), op de echte snelheid."""
+        path = media.path("opnames", naam)
+        if path is None:
+            return jsonify(fout="Dit bestand bestaat niet."), 404
+        try:
+            _, frames = media.play(path)
+        except MediaBusy as exc:
+            return jsonify(fout=str(exc)), 409
+        except (OSError, ValueError, struct.error):
+            return jsonify(fout="Deze opname kan niet worden afgespeeld."), 404
+
+        allowed = still_allowed()
+
+        def stream():
+            for jpeg in frames:
+                if not allowed():
+                    break
+                yield (b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "
+                       + str(len(jpeg)).encode() + b"\r\n\r\n" + jpeg + b"\r\n")
+
+        return Response(stream(), mimetype="multipart/x-mixed-replace; boundary=frame",
+                        headers={"Cache-Control": "no-store"})
+
+    @app.delete("/api/media/<soort>/<naam>")
+    @login_required
+    def media_delete(soort, naam):
+        path = media.path(soort, naam)
+        if path is None:
+            return jsonify(fout="Dit bestand bestaat niet."), 404
+        try:
+            media.delete(soort, path)
+        except MediaBusy as exc:
+            return jsonify(fout=str(exc)), 409
+        except OSError as exc:
+            log.warning("Verwijderen van %s mislukte: %s", path, exc)
+            return jsonify(fout="Het bestand kon niet worden verwijderd (wordt het nog afgespeeld?)."), 409
+        return jsonify(ok=True)
+
+    # -- statistiek en meldingen ---------------------------------------------------
+
+    @app.get("/api/statistiek")
+    @login_required
+    def statistics():
+        periode = request.args.get("periode", "uur")
+        if periode not in ("uur", "dag"):
+            return jsonify(fout="Kies periode=uur of periode=dag."), 400
+        if stats is None:
+            # 409 en niet 404: de website zegt bij 404 dat de software te oud is.
+            return jsonify(fout="Statistiek staat uit (STATISTIEK=uit in .env)", uit=True), 409
+        return jsonify(stats.report(periode))
+
+    @app.get("/api/meldingen.csv")
+    @login_required
+    def alerts_csv():
+        """Alle meldingen als csv-bestand, met een kopregel erboven.
+
+        Zo dat het in een Nederlandse Excel meteen goed opent: puntkomma's tussen de kolommen
+        (zoals Excel dat hier verwacht), aanhalingstekens om een veld met ; of " erin, en een
+        "BOM" vooraan zodat é en ë goed overkomen (UTF-8).
+        """
+        path = getattr(alerts, "log_file", None)
+
+        def generate():
+            buffer = io.StringIO()
+            writer = csv.writer(buffer, delimiter=";", lineterminator="\r\n")
+            writer.writerow(["tijd", "soort", "bericht"])
+            yield "\ufeff".encode() + buffer.getvalue().encode("utf-8")
+            try:
+                with open(path, encoding="utf-8", errors="replace", newline="") as f:
+                    for row in csv.reader(f):  # data/meldingen.csv zelf blijft met komma's
+                        buffer.seek(0)
+                        buffer.truncate()
+                        writer.writerow(row)
+                        yield buffer.getvalue().encode("utf-8")
+            except (OSError, TypeError, csv.Error):
+                pass  # nog geen meldingen (alleen de kopregel) of een kapotte regel aan het eind
+
+        return Response(generate(), mimetype="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": 'attachment; filename="meldingen.csv"',
+                                 "Cache-Control": "no-store"})
+
+    # -- gebruikers ------------------------------------------------------------
+
+    @app.get("/api/gebruikers")
+    @login_required
+    def list_users():
+        return jsonify(gebruikers=[{"naam": name} for name in users.names()], ik=session["user"])
+
+    @app.post("/api/gebruikers")
+    @login_required
+    def add_user():
+        data = _json_body()
+        name, password = data.get("naam"), data.get("wachtwoord")
+        if not isinstance(name, str) or not isinstance(password, str):
+            return jsonify(fout="Vul een gebruikersnaam en een wachtwoord in."), 400
+        try:
+            users.add(name, password, replace=False)  # een bestaande gebruiker overschrijven mag niet
+        except ValueError as exc:
+            return jsonify(fout=str(exc)), 400
+        log.info("Gebruiker '%s' toegevoegd door %s", name.strip().lower(), session["user"])
+        return jsonify(ok=True)
+
+    @app.delete("/api/gebruikers/<naam>")
+    @login_required
+    def delete_user(naam):
+        naam = naam.strip().lower()
+        if naam == session["user"]:
+            return jsonify(fout="Je kunt jezelf niet verwijderen."), 400
+        try:
+            removed = users.remove(naam, keep_last=True)
+        except ValueError as exc:
+            return jsonify(fout=str(exc)), 400
+        if not removed:
+            return jsonify(fout="Deze gebruiker bestaat niet."), 404
+        log.info("Gebruiker '%s' verwijderd door %s", naam, session["user"])
+        return jsonify(ok=True)
+
+    @app.post("/api/wachtwoord")
+    @login_required
+    def change_password():
+        """Eigen wachtwoord wijzigen. Net als bij inloggen: na 5 foute pogingen 5 minuten wachten."""
+        data = _json_body()
+        old, new = data.get("oud"), data.get("nieuw")
+        if not isinstance(old, str) or not isinstance(new, str) or not old:
+            return jsonify(fout="Vul je huidige en je nieuwe wachtwoord in."), 400
+        try:
+            check_password(new)
+        except ValueError as exc:
+            return jsonify(fout=str(exc)), 400
+        ip = request.remote_addr or "?"
+        if not limiter.attempt(ip):  # telt de poging meteen mee, ook bij veel tegelijk
+            return jsonify(fout="Te veel mislukte pogingen. Wacht 5 minuten."), 429
+        if not users.verify(session["user"], old):
+            time.sleep(0.5)
+            return jsonify(fout="Je huidige wachtwoord klopt niet."), 400
+        limiter.succeeded(ip)
+        try:
+            users.change_password(session["user"], new)
+        except ValueError as exc:
+            return jsonify(fout=str(exc)), 400
+        # Zelf ingelogd blijven, de rest is uitgelogd. Verzoeken van deze sessie die nog met
+        # het oude cookie onderweg zijn, tellen nog even mee (zie stamp_grace).
+        old_stamp, new_stamp = session.get("stempel"), users.stamp(session["user"])
+        session["stempel"] = new_stamp
+        session.setdefault("sid", secrets.token_hex(8))
+        now = time.time()
+        for sid in [k for k, v in stamp_grace.items() if v[3] < now]:
+            stamp_grace.pop(sid, None)  # verlopen
+        stamp_grace[session["sid"]] = (session["user"], old_stamp, new_stamp, now + STAMP_GRACE)
+        log.info("Gebruiker '%s' heeft zijn wachtwoord gewijzigd", session["user"])
+        return jsonify(ok=True)
+
     # -- gezichten beheren ---------------------------------------------------
 
     @app.get("/api/faces")
@@ -375,6 +700,21 @@ def create_app(cfg, pipeline, faces, objects, alerts, assistant, users,
 
 
 BUSY = "J.A.R.V.I.S. is nog bezig met je vorige vraag. Even geduld."
+
+
+def _safe_next(target: str) -> str:
+    """Waar je na het inloggen heen gaat: alleen een pad op deze website, anders "/".
+
+    Strenger dan "begint met /": browsers negeren tabs en regeleinden in een adres en lezen
+    een backslash als "/". Zo zou "/", tab, "/evil.com" toch naar een andere website gaan.
+    """
+    if not isinstance(target, str) or not target.startswith("/") or target.startswith("//") \
+            or "\\" in target or any(ord(c) < 32 or ord(c) == 127 for c in target):
+        return "/"
+    parts = urlparse(target)
+    if parts.scheme or parts.netloc:
+        return "/"
+    return target
 
 
 def _json_body() -> dict:
