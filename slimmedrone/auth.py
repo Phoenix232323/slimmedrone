@@ -13,7 +13,9 @@ from pathlib import Path
 
 from werkzeug.security import check_password_hash, generate_password_hash
 
-USERNAME_PATTERN = re.compile(r"[a-z0-9_.-]{2,32}")
+# Niet beginnen met een punt: namen als ".." zouden in een webadres (/api/gebruikers/..)
+# als "map omhoog" worden gelezen en zijn dan niet meer te verwijderen.
+USERNAME_PATTERN = re.compile(r"[a-z0-9_-][a-z0-9_.-]{1,31}")
 MIN_PASSWORD_LENGTH = 8
 # Wordt gebruikt als de gebruikersnaam niet bestaat, zodat een inlogpoging
 # even lang duurt en je niet kunt raden welke namen bestaan.
@@ -41,7 +43,8 @@ class UserStore:
         (zo werkt beheer.py). De website gebruikt replace=False: dan is dat een fout."""
         username = username.strip().lower()
         if not USERNAME_PATTERN.fullmatch(username):
-            raise ValueError("Gebruikersnaam: 2-32 tekens, alleen kleine letters, cijfers, . _ of -")
+            raise ValueError("Gebruikersnaam: 2-32 tekens, alleen kleine letters, cijfers, . _ of - "
+                             "(niet beginnen met een punt)")
         check_password(password)
         with self._lock:
             users = self._load()
@@ -108,7 +111,12 @@ def check_password(password: str):
 
 
 class LoginLimiter:
-    """Na 5 foute pogingen moet een IP-adres 5 minuten wachten."""
+    """Na 5 foute pogingen moet een IP-adres 5 minuten wachten.
+
+    Gebruik: eerst attempt(ip) (False = wachten), dan het wachtwoord controleren, en bij
+    een goed wachtwoord succeeded(ip). Een poging telt al als fout zodra hij begint; zo
+    kun je de limiet niet omzeilen door heel veel pogingen tegelijk te sturen.
+    """
 
     def __init__(self, max_attempts: int = 5, window: float = 300):
         self.max_attempts = max_attempts
@@ -116,15 +124,16 @@ class LoginLimiter:
         self._failures = {}
         self._lock = threading.Lock()
 
-    def blocked(self, ip: str) -> bool:
+    def attempt(self, ip: str) -> bool:
+        """Mag dit IP-adres het nu proberen? Zo ja, dan telt de poging meteen mee (als fout)."""
         with self._lock:
-            recent = [t for t in self._failures.get(ip, []) if time.time() - t < self.window]
+            now = time.time()
+            recent = [t for t in self._failures.get(ip, []) if now - t < self.window]
+            allowed = len(recent) < self.max_attempts
+            if allowed:
+                recent.append(now)
             self._failures[ip] = recent
-            return len(recent) >= self.max_attempts
-
-    def failed(self, ip: str):
-        with self._lock:
-            self._failures.setdefault(ip, []).append(time.time())
+            return allowed
 
     def succeeded(self, ip: str):
         with self._lock:

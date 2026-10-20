@@ -60,6 +60,20 @@ MAX_WATCH_MINUTES = 720
 MAX_RECORD_MINUTES = 180  # (de recorder houdt zich daarnaast aan OPNAME_MAX_MINUTEN)
 DEFAULT_STATS_MINUTES = 60
 
+# Lokale modus: alleen een duidelijke opdracht start een opname ("start een opname", "neem dit op",
+# "film dit"), geen vraag als "maak je een opname?" of "hoe maak ik een opname?". De opdracht staat
+# vooraan in de zin (of na een komma, "en", "jarvis", "oké", ...) en er komt geen "je/ik/we" achter.
+_ZIN_BEGIN = (r"(?:^|[,.!;:]\s*|\ben\s+)"
+              r"(?:(?:hé|hey|hoi|oké|ok|okay|jarvis|graag|alsjeblieft|alstublieft|nu|even|dan)[,!]?\s+)*")
+_GEEN_ONDERWERP = r"(?!(?:je|jij|u|ik|we|wij|ze|zij)\b)"
+RECORD_COMMAND = re.compile(
+    _ZIN_BEGIN + r"(?:"
+    r"(?:start|begin|maak)\s+" + _GEEN_ONDERWERP + r"(?:\S+\s+){0,3}?(?:video-?)?(?:opname|video|filmpje)\b"
+    r"|(?:start|begin)\s+(?:met\s+)?(?:(?:op)?nemen|filmen)\b"
+    r"|neem\s+" + _GEEN_ONDERWERP + r"(?:\S+\s+){0,4}?op\s*(?:[.!?,]|$)"
+    r"|film\s+(?:het|dit|dat|alles)\b|film[.!]?$"
+    r")")
+
 # Weigert het model iets onterecht, dan probeert de API het automatisch opnieuw
 # met een ander passend model ("fallback").
 BETAS = ["server-side-fallback-2026-07-01"]
@@ -1038,14 +1052,13 @@ class Assistant:
         if re.search(r"\b(stop|stoppen|beëindig\w*|klaar met)\b.*\b(opnames?|opnemen|filmen|video)\b|"
                      r"\b(niet meer|hou op met|houd op met) (op)?(nemen|filmen)\b", q):
             return run("stop_recording").tekst
-        if re.search(r"\b(start|begin|maak|neem|starten|beginnen|maken)\b.*\b(opname|video|filmpje)\b|"
-                     r"\b(begin|start) (met )?(op)?nemen\b|\bneem (het |dit |dat |alles )?(even )?op\b|"
-                     r"\b(begin|start) (met )?filmen\b|\bfilm (het|dit|dat|alles)\b", q):
+        if RECORD_COMMAND.search(q):
             minutes = _minutes_in(q, 0)
             args = {"minutes": max(1, min(MAX_RECORD_MINUTES, minutes))} if minutes else {}
             return run("start_recording", **args).tekst
         if re.search(r"\b(neem|nemen) (je|jij|we|wij) (nu )?op\b|loopt (de|er een) opname|"
-                     r"(ben je|zijn we) (aan het )?(op)?nemen", q):
+                     r"(ben je|zijn we) (aan het )?(op)?nemen|is er (nu )?een opname (bezig|aan de gang)|"
+                     r"\b(maak|maken|begin|start) (je|jij|we|wij)\b.*\b(opname|video|filmpje)\b", q):
             rec = self.recorder.status() if self.recorder is not None else None
             if not rec or not rec["actief"]:
                 return "Nee, er loopt geen opname. Zeg \"start een opname\" als ik moet beginnen."

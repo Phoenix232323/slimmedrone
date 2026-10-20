@@ -95,6 +95,8 @@ def thumbnail(image, width: int = MINI_WIDTH) -> bytes:
 
 def thumbnail_from_jpeg(jpeg: bytes, width: int = MINI_WIDTH) -> bytes:
     """Miniatuur van een JPEG. We pakken hem op halve grootte uit: dat is veel sneller."""
+    if not jpeg:  # leeg bestand: OpenCV geeft dan een fout in plaats van None
+        raise ValueError("Leeg bestand")
     data = np.frombuffer(jpeg, np.uint8)
     image = cv2.imdecode(data, cv2.IMREAD_REDUCED_COLOR_2)
     if image is not None and image.shape[1] < width:  # klein plaatje: dan toch op ware grootte
@@ -343,7 +345,7 @@ class Media:
         if self.busy(path.name):
             raise MediaBusy("Deze opname loopt nog.")
         side = path.with_suffix(".jpg")
-        if side.is_file() and not side.is_symlink():
+        if side.is_file() and not side.is_symlink() and side.stat().st_size > 0:
             return side.read_bytes()
         info = read_avi(path)
         if not info.frames:
